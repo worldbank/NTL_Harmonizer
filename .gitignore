@@ -131,3 +131,6 @@ dmypy.json
 
 # data
 data/
+artifacts/
+output/
+results/
