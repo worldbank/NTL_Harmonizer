@@ -1,0 +1,17 @@
+pip>=21.0
+ipython
+geopandas
+jupyter
+geemap
+rasterio
+matplotlib
+seaborn
+tqdm
+dill
+dask-image
+dask-ml
+xarray
+bokeh>=0.13.0
+xgboost
+imageio
+imageio-ffmpeg

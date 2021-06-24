@@ -1,0 +1,66 @@
+AOI bounding box coordinates:
+All coordinates are lat/long degrees in WGS84 datum
+
+Mauritius:
+Bounding box:
+	-West-most Longitude: 56.58569336
+	-South-most Latitude: -20.52569389
+	-East-most Longitude: 63.50347137
+	-North-most Latitude: -10.33708191
+
+**************************************************
+
+Puerto Rico:
+Bounding box:
+	-West-most Longitude: -67.95180511
+	-South-most Latitude: 17.88264084
+	-East-most Longitude: -64.99986267
+	-North-most Latitude: 18.51597214
+
+**************************************************
+
+Central America:
+Bounding box:
+	-West-most Longitude: -92.2223587
+	-South-most Latitude: 5.49902678
+	-East-most Longitude: -81.99986267
+	-North-most Latitude: 17.81871414
+
+**************************************************
+
+Japan:
+Bounding box:
+	-West-most Longitude: 122.93319702
+	-South-most Latitude: 24.04541588
+	-East-most Longitude: 153.98693848
+	-North-most Latitude: 45.52278519
+
+**************************************************
+
+Central Europe:
+Bounding box:
+	-West-most Longitude: -18.16152763
+	-South-most Latitude: 27.63736153
+	-East-most Longitude: 24.14578247
+	-North-most Latitude: 55.05652618
+
+**************************************************
+
+Uganda:
+Bounding box:
+	-West-most Longitude: 29.57149887
+	-South-most Latitude: -1.48213983
+	-East-most Longitude: 35.00027466
+	-North-most Latitude: 4.23446608
+
+**************************************************
+
+USA Lower 48:
+Bounding box:
+	-West-most Longitude: -124.76277924
+	-South-most Latitude: 24.52041626
+	-East-most Longitude: -66.94889069
+	-North-most Latitude: 49.38329697
+
+**************************************************
+
