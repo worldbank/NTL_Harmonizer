@@ -6,19 +6,16 @@ import os
 # ROI FILE
 #########################
 
-# put your shapefile in the "roifiles" directory
-# and update the filepath here (relative to root directory)
-roipath = ""
-
-# NOTE: There are some example files (national level)
-# in the roifiles/ folder
-# if you want to uncomment the corresponding line below:
+# The following country boundaries are included
+# as test examples. To use them, uncomment the corresponding line below
+# To provide your own shapefile, save it in the "roifiles/" folder
+# and set the relative path to the roipath variable
 
 # roipath = "roifiles/conus_shp/conus.shp"
 # roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
 # roipath = "roifiles/gadm36_ESP_shp/gadm36_ESP_0.shp"
 # roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
-# roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
+roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
 # roipath = "roifiles/gadm36_JPN_shp/gadm36_JPN_0.shp"
 # roipath = "roifiles/gadm36_MUS_shp/gadm36_MUS_0.shp"
 # roipath = "roifiles/gadm36_NIC_shp/gadm36_NIC_0.shp"

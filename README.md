@@ -153,7 +153,7 @@ so that everything is projected in the same CRS.
 
 However you get this shapefile, save it in the folder `roifiles` and set this location in your `config.py` file for the `roipath` variable.
 
-**There is a shapefile already in this folder for the national boundary (admin 0) for Italy that you can use as an example. Just set the location of the `.shp` file to `roipath` in `config.py`**
+**There are several country shapefiles already provided in the `roifiles` sub-directory if you wish to use them (uncomment the corresponding path in the `config.py` file).**
 
 ### Execute program
 1. Make sure all data are downloaded and variables set, including the ROI shapefile for a particular run.
