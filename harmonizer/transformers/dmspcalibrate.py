@@ -78,7 +78,7 @@ class DMSPstepwise:
             coefs = self.get_F16coefs_from_path(srcpath)
             X = self.process(X, coefs)
             X = self.process(X, self.f16Bcoefs)
-        elif "F182020" in str(srcpath):
+        elif "F182010" in str(srcpath):
             X = self.process(X, self.f18coefs)
         else:
             X = clip_arr(X, floor=0.0, ceiling=63.0)
