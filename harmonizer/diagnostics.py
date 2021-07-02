@@ -220,16 +220,17 @@ def make_movie(srcpaths, dstpath, fps):
     imageio.mimwrite(dstpath, series, fps=fps)
 
 
-def create_all_movies(dmsp_clip, viirs_tmp, output, resultsdir, fps=3):
+def create_all_movies(dmsp_clip, viirs_tmp, output, resultsdir, selectDMSP, fps=3):
     final = sorted(list(output.glob("F*.tif")))
     final += sorted(list(output.glob("*VNL*.tif")))
-    raw = sorted(list(dmsp_clip.glob("*.tif")))
+    sats = sorted([k + yr for k, v in selectDMSP.items() for yr in v])
+    raw = [next(dmsp_clip.glob(f"*{sat}*.tif")) for sat in sats]
     raw += sorted(list(viirs_tmp.glob("*.tif")))
     make_movie(final, Path(resultsdir, "final.mp4"), fps)
     make_movie(raw, Path(resultsdir, "raw.mp4"), fps)
 
 
-def main(outputdir, resultsdir, dmsp_clip, viirs_clip, viirs_tmp, lowerthresh):
+def main(outputdir, resultsdir, dmsp_clip, viirs_clip, viirs_tmp, lowerthresh, selectDMSP):
     training_diagnostics(srcdir=outputdir, resultsdir=resultsdir, thresh=lowerthresh)
     plot_final_time_series(
         outputdir=outputdir, resultsdir=resultsdir, thresh=lowerthresh
@@ -247,5 +248,6 @@ def main(outputdir, resultsdir, dmsp_clip, viirs_clip, viirs_tmp, lowerthresh):
         viirs_tmp=viirs_tmp,
         output=outputdir,
         resultsdir=resultsdir,
+        selectDMSP=selectDMSP,
         fps=3,
     )

@@ -14,5 +14,3 @@ def convert_float(x):
 def load_prep(srcpath=GDPFPATH):
     df = pd.read_csv(srcpath, sep=';',engine="python",skipfooter=3)
     return df.set_index('GEO/TIME').T.applymap(lambda x: convert_float(x))
-
-def country_select(gdf, )
