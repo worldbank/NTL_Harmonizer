@@ -129,6 +129,7 @@ def main(trialname, crop, roipath=ROIPATH):
         dmsp_clip=DMSP_CLIP,
         viirs_clip=VIIRS_CLIP,
         viirs_tmp=VIIRS_TMP,
+        selectDMSP=DMSP_PREFERRED_SATS,
         lowerthresh=3,
     )
     print(f"time to plot results: {time.time() - t4:.4f}s")

@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
+import rasterio
+import numpy as np
 
 
 def raster_scatter(x, y, xlabel, ylabel, title, opath, **kwargs):
@@ -56,3 +58,19 @@ def plot_timeseries(seqs, yrs, labels, opath, xlabel, ylabel, title, **kwargs):
     else:
         plt.show()
     plt.close(fig)
+
+def difference_plots(srcpath, thresh=1):
+    with rasterio.open(srcpath) as src:
+        arr = src.read(list(range(1, src.count + 1)))
+        desc = src.descriptions
+    for i in range(2):
+        fig, ax = plt.subplots(1, figsize=(15, 7))
+        plt.imshow(arr[i, ...])
+        plt.title(f"2013 {desc[i]}", fontsize=20)
+        plt.axis("off")
+
+    fig, ax = plt.subplots(1, figsize=(15, 7))
+    plt.imshow(np.ma.masked_array(arr, arr < thresh)[0, ...] - np.ma.masked_array(arr, arr < thresh)[1, ...], cmap='seismic')
+    plt.colorbar()
+    plt.title("2013 difference (VIIRS-DNB minus DMSP-OLS) (lit pixels only)", fontsize=20);
+    plt.axis("off")
