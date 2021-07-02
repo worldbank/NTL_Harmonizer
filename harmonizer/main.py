@@ -1,4 +1,5 @@
 from harmonizer.config import (
+    ROOT,
     VIIRS_IN,
     VIIRS_TMP,
     DMSP_IN,
@@ -82,20 +83,22 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
     save_obj(finalharmonizer, finalharmonizer.opath)
 
 
-def main(trialname):
+def main(trialname, crop, roipath=ROIPATH):
     trialout = Path(OUTPUT, trialname)
     trialout.mkdir(exist_ok=True)
     trialresults = Path(RESULTS, trialname)
     trialresults.mkdir(exist_ok=True)
     clear_subdirs(
-        [DMSP_TMP, VIIRS_TMP, DMSP_CLIP, VIIRS_CLIP, STAGE_TMP, trialout, trialresults]
+        [DMSP_TMP, VIIRS_TMP, STAGE_TMP, trialout, trialresults]
     )  # this will overwrite previously processed files
 
     # clip nighttime files to ROI
     t0 = time.time()
-    crop_batch(srcdir=DMSP_IN, dstdir=DMSP_CLIP, geompath=ROIPATH, n_jobs=1)
-    crop_batch(srcdir=VIIRS_IN, dstdir=VIIRS_CLIP, geompath=ROIPATH, n_jobs=1)
-    print(f"time to crop: {time.time() - t0:.4f}s")
+    if crop:
+        clear_subdirs([DMSP_CLIP, VIIRS_CLIP])
+        crop_batch(srcdir=DMSP_IN, dstdir=DMSP_CLIP, geompath=roipath, n_jobs=1)
+        crop_batch(srcdir=VIIRS_IN, dstdir=VIIRS_CLIP, geompath=roipath, n_jobs=1)
+        print(f"time to crop: {time.time() - t0:.4f}s")
 
     # calibrate DMSP-OLS using the stepwise method
     t1 = time.time()
@@ -135,14 +138,32 @@ def main(trialname):
     print(f"total runtime: {time.time() - t0:.4f}s")
     return
 
+def process_all_test_samples():
+    # this runs the harmonizer and creates results plots
+    # on each of the shapefiles in the `roifiles/` directory.
+    t0 = time.time()
+    rois = Path(ROOT,"roifiles").glob("**/*.shp")
+    for roi in tqdm(rois):
+        print("*"*25)
+        print(f"processing {roi.stem}...")
+        print("*" * 25)
+        roipath = roi
+        main(trialname=roipath.stem, crop=True, roipath=roipath)
+    print("DONE!")
+    print(f"total runtime: {time.time() - t0:.4f}s")
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", default="test", help="trial name")
+    parser.add_argument("-nc", "--nocrop", action="store_false", help="skips cropping")
+    parser.add_argument("-a", "--alltest", action="store_true", help="runs all test cases in roifiles")
     args = parser.parse_args()
-    return args.name
+    return args.name, args.nocrop, args.alltest
 
 
 if __name__ == "__main__":
-    trialname = get_args()
-    main(trialname)
+    trialname, crop, alltest = get_args()
+    if alltest:
+        process_all_test_samples()
+    else:
+        main(trialname, crop)
