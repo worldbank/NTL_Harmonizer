@@ -15,3 +15,4 @@ bokeh>=0.13.0
 xgboost
 imageio
 imageio-ffmpeg
+h5py
