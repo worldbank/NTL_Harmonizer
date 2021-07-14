@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 
+# set to absolute location of this directory
+ROOT = Path(os.environ["NLT"],"NTL_Harmonizer")
 
 #########################
 # ROI FILE
@@ -38,7 +40,7 @@ DOWNSAMPLEVIIRS = True
 ###################################
 # YOU SHOULDNT NEED TO CHANGE THESE
 ###################################
-ROOT = Path.cwd()
+
 DMSP_URLS = Path(ROOT, "files", "noaa_dmsp_annual_urls.txt")
 VIIRS_URLS = Path(ROOT, "files", "eog_viirs_annualv2_urls.txt")
 ROIPATH = Path(ROOT, roipath)
