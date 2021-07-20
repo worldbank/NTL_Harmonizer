@@ -14,9 +14,9 @@ ROOT = Path(os.environ["NLT"],"NTL_Harmonizer")
 # and set the relative path to the roipath variable following these examples
 
 # roipath = "roifiles/conus_shp/conus.shp"
-roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
+# roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
 # roipath = "roifiles/gadm36_ESP_shp/gadm36_ESP_0.shp"
-# roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
+roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
 # roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
 # roipath = "roifiles/gadm36_JPN_shp/gadm36_JPN_0.shp"
 # roipath = "roifiles/gadm36_MUS_shp/gadm36_MUS_0.shp"
