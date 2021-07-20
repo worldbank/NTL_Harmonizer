@@ -61,6 +61,9 @@ def get_kernel(pixelradius, sigma):
     y, x = np.ogrid[-pixelradius : pixelradius + 1, -pixelradius : pixelradius + 1]
     h = gaussian_kernel(y, x, sigma=sigma)
     h[h < np.finfo(h.dtype).eps * h.max()] = 0
+    sumh = h.sum()
+    if sumh != 0:
+        h /= sumh
     return h
 
 
