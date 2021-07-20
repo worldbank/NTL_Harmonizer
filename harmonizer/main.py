@@ -51,7 +51,7 @@ def viirs_batch(srcdir, dstdir):
     srcpaths = srcdir.glob("*.tif")
     prepper = VIIRSprep(
         pixelradius=5,
-        sigma=0.25,
+        sigma=2.0, # 0.25
         damperthresh=1.0,
         usedask=True,
         chunks="auto",
