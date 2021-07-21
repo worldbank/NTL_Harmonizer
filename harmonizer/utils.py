@@ -71,6 +71,12 @@ def sample_arr(arr, samplesize):
     idx = np.random.choice(np.arange(arr.shape[1]), samplesize, replace=False)
     return arr[:, idx.tolist()]
 
+# def fsigmoid(x, a, b, c, d):
+#     return a + b* (1. / (1 + np.exp(-c*(x - d))))
+
+def fsigmoid(x, L, x0, k, b):
+    # adapted from: https://stackoverflow.com/questions/55725139/fit-sigmoid-function-s-shape-curve-to-data-using-python
+    return L / (1 + np.exp(-k * (x - x0))) + b
 
 #################
 # GENERAL UTILITIES

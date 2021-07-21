@@ -22,6 +22,7 @@ from harmonizer.transformers.dmspcalibrate import DMSPstepwise
 from harmonizer.transformers.viirsprep import VIIRSprep
 from harmonizer.transformers.harmonize import Harmonizer, save_obj
 from harmonizer.transformers.gbm import XGB
+from harmonizer.transformers.curve import CurveFit
 from harmonizer.diagnostics import main as diagnosticsmain
 from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
@@ -70,10 +71,10 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
         output=output,
         downsampleVIIRS=DOWNSAMPLEVIIRS,
         samplemethod=SAMPLEMETHOD,
-        polyX=True,
-        idX=True,
+        polyX=False,
+        idX=False,
         epochs=100,
-        est=XGB(),
+        est=CurveFit(),
         opath=artifactpath,
     )
     print("training model on ROI data...")
