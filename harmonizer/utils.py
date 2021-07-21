@@ -40,7 +40,6 @@ def compare_rasters(srcpath1, srcpath2, processfunc):
 # MATRIX OPS
 #################
 
-
 def clip_arr(arr, floor=None, ceiling=None):
     if floor is not None:
         arr[arr < floor] = floor
@@ -55,7 +54,6 @@ def gaussian_kernel(y, x, sigma):
 
 # def quartic_kernel(u):
 #     return (15/16)*(1 - u**2)**2 if abs(u) <= 1 else 0
-
 
 def get_kernel(pixelradius, sigma):
     y, x = np.ogrid[-pixelradius : pixelradius + 1, -pixelradius : pixelradius + 1]
@@ -77,7 +75,6 @@ def sample_arr(arr, samplesize):
 #################
 # GENERAL UTILITIES
 #################
-
 
 def shp_from_url(url, dstdir):
     r = requests.get(url)
