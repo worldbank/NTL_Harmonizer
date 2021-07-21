@@ -7,7 +7,8 @@ from tqdm import tqdm
 from harmonizer.utils import sample_arr, filepathsearch, resample_raster
 from harmonizer.plots import raster_scatter, raster_hist, plot_timeseries
 from harmonizer.config import SAMPLEMETHOD, DOWNSAMPLEVIIRS
-
+from multiprocessing.dummy import Pool as ThreadPool
+from functools import partial
 
 # 2013 metrics
 def calc_rmsd(yhat, y):
@@ -107,20 +108,25 @@ def reduce_array(arr, reducefunc, thresh):
         arr[arr < thresh] = np.nan
     return reducefunc(arr)
 
+def extract_and_reduce(srcpath, reducfunc, thresh):
+    X = load_arr(srcpath).astype(np.float32)
+    return reduce_array(X, reducfunc, thresh)
 
-def get_series(srcpaths, reducfunc, thresh):
-    series = []
-    for srcpath in tqdm(srcpaths):
-        X = load_arr(srcpath).astype(np.float32)
-        series.append(reduce_array(X, reducfunc, thresh))
+def get_series(srcpaths, reducfunc, thresh, n_jobs=1):
+    if n_jobs > 1:
+        func = partial(extract_and_reduce,
+                       reducfunc=reducfunc,
+                       thresh=thresh)
+        thread_pool = ThreadPool(n_jobs)
+        series = list(thread_pool.imap(func, srcpaths))
+    else:
+        series = [extract_and_reduce(srcpath, reducfunc, thresh) for srcpath in tqdm(srcpaths)]
     return series
-
 
 def get_yr_from_path(srcpath):
     for yr in range(1992, int(datetime.now().year) + 1):
         if str(yr) in str(srcpath):
             return yr
-
 
 def plot_final_time_series(outputdir, resultsdir, thresh=None):
     dmsp = filepathsearch(outputdir, "F", "*.tif", firstonly=False)

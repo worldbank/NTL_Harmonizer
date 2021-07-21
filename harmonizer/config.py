@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 
+# set to absolute location of this directory
+ROOT = Path(os.environ["NLT"],"NTL_Harmonizer")
 
 #########################
 # ROI FILE
@@ -12,9 +14,9 @@ import os
 # and set the relative path to the roipath variable following these examples
 
 # roipath = "roifiles/conus_shp/conus.shp"
-roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
+# roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
 # roipath = "roifiles/gadm36_ESP_shp/gadm36_ESP_0.shp"
-# roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
+roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
 # roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
 # roipath = "roifiles/gadm36_JPN_shp/gadm36_JPN_0.shp"
 # roipath = "roifiles/gadm36_MUS_shp/gadm36_MUS_0.shp"
@@ -38,7 +40,7 @@ DOWNSAMPLEVIIRS = True
 ###################################
 # YOU SHOULDNT NEED TO CHANGE THESE
 ###################################
-ROOT = Path.cwd()
+
 DMSP_URLS = Path(ROOT, "files", "noaa_dmsp_annual_urls.txt")
 VIIRS_URLS = Path(ROOT, "files", "eog_viirs_annualv2_urls.txt")
 ROIPATH = Path(ROOT, roipath)
