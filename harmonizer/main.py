@@ -71,10 +71,10 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
         output=output,
         downsampleVIIRS=DOWNSAMPLEVIIRS,
         samplemethod=SAMPLEMETHOD,
-        polyX=False,
-        idX=False,
+        polyX=True,
+        idX=True,
         epochs=100,
-        est=CurveFit(),
+        est=XGB(),
         opath=artifactpath,
     )
     print("training model on ROI data...")
