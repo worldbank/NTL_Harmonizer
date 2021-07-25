@@ -72,7 +72,7 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
         downsampleVIIRS=DOWNSAMPLEVIIRS,
         samplemethod=SAMPLEMETHOD,
         polyX=True,
-        idX=True,
+        idX=False,
         epochs=100,
         est=XGB(),
         opath=artifactpath,
