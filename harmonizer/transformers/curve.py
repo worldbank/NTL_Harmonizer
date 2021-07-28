@@ -1,18 +1,23 @@
-from scipy.optimize import curve_fit
-from harmonizer.utils import fsigmoid
-import numpy as np
-import xarray as xr
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 
 class CurveFit:
-    def __init__(self, objfunc=fsigmoid):
-        self.objfunc = objfunc
+    def __init__(self, degree=3):
+        self.model = LinearRegression()
+        self.poly_features = PolynomialFeatures(degree=degree)
 
     def fit(self, X, y, epochs=None):
-        X = xr.DataArray(X)
-        y = xr.DataArray(y)
-        p0 = [max(y), np.median(X), 1, min(y)]
-        self.popt, _ = curve_fit(self.objfunc, X, y, p0=p0, method="dogbox")
+
+        X = self.poly_features.fit_transform(X)
+        self.model.fit(X, y)
 
     def predict(self, X):
+        X = self.poly_features.fit_transform(X)
+        return self.model.predict(X)
 
-        return self.objfunc(X, *self.popt)
+class NoFit:
+    def fit(self, X, y, epochs=None):
+        return
+
+    def predict(self, X):
+        return X

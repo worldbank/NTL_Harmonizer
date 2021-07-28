@@ -10,7 +10,7 @@ def raster_scatter(x, y, xlabel, ylabel, title, opath, **kwargs):
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
-    ax.legend(loc="best")
+    # ax.legend(loc="best")
     if opath is not None:
         plt.savefig(opath)
     else:
@@ -19,7 +19,7 @@ def raster_scatter(x, y, xlabel, ylabel, title, opath, **kwargs):
 
 
 def raster_hist(
-    x, y, bins, label1, label2, xlabel, ylabel, title, opath, text, **kwargs
+    x, y, bins, label1, label2, xlabel, ylabel, title, opath, text=None, **kwargs
 ):
     fig, ax = plt.subplots(1, figsize=(10, 10))
     sns.histplot(
@@ -28,10 +28,10 @@ def raster_hist(
     sns.histplot(
         x=y, ax=ax, color="steelblue", alpha=0.5, bins=bins, label=label2, **kwargs
     )
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
+    ax.set_xlabel(xlabel, fontsize=20)
+    ax.set_ylabel(ylabel, fontsize=20)
     ax.set_title(title)
-    ax.legend(loc="best")
+    ax.legend(loc="best", fontsize=20)
     if text is not None:
         plt.text(bins // 3, len(x) // 10, text, ha="left", wrap=True)
     if opath is not None:
@@ -44,10 +44,14 @@ def raster_hist(
 def plot_timeseries(seqs, yrs, labels, opath, xlabel, ylabel, title, **kwargs):
     fig, ax = plt.subplots(1, figsize=(15, 7))
     for seq, yr, label in zip(seqs, yrs, labels):
-        if "comp" in label:
-            sns.lineplot(x=yr, y=seq, ls=":", label=label, ax=ax, **kwargs)
+        if "DMSP" in label:
+            clr = "orange"
         else:
-            sns.lineplot(x=yr, y=seq, label=label, ax=ax, **kwargs)
+            clr = "b"
+        if "un-adj" in label:
+            sns.lineplot(x=yr, y=seq, ls=":", color=clr, label=label, ax=ax, **kwargs)
+        else:
+            sns.lineplot(x=yr, y=seq, color=clr, label=label, ax=ax, **kwargs)
     plt.legend(loc="best")
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)

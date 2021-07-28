@@ -42,6 +42,7 @@ class Harmonizer:
         downsampleVIIRS,
         samplemethod,
         polyX,
+        shift,
         idX,
         epochs,
         est,
@@ -54,6 +55,7 @@ class Harmonizer:
         self.downsampleVIIRS = downsampleVIIRS
         self.samplemethod = samplemethod
         self.polyX = polyX
+        self.shift = shift
         self.idX = idX
         self.epochs = epochs
         self.est = est
@@ -65,8 +67,10 @@ class Harmonizer:
 
     def Xy_transform(self, X, y=None):
         X = np.expand_dims(X, axis=0)
+        features = [X]
         if self.polyX:
-            # X = np.concatenate([X, X ** 2], axis=0)
+            features = [X, X **2]
+        if self.shift:
             Xup = X.copy()
             Xup[0, :-1,:] = X[0, 1:, :]
             Xdn = X.copy()
@@ -84,13 +88,14 @@ class Harmonizer:
             Xl2[0, :, :-2] = X[0, :, 2:]
             Xr2 = X.copy()
             Xr2[0, :, 2:] = X[0, :, :-2]
-            X = np.concatenate([X, X ** 2, Xup, Xdn, Xl, Xr, Xup2, Xdn2, Xl2, Xr2], axis=0)
+            features = features + [Xup, Xdn, Xl, Xr, Xup2, Xdn2, Xl2, Xr2]
 
         if self.idX:
             idgrid = np.meshgrid(range(0, X.shape[-1]), range(0, X.shape[-2]))
             xgrid = np.expand_dims(idgrid[0], axis=0)
             ygrid = np.expand_dims(idgrid[1], axis=0)
-            X = np.concatenate([X, xgrid, ygrid], axis=0)
+            features = features + [xgrid, ygrid]
+        X = np.concatenate(features, axis=0)
         X = X.reshape(X.shape[0], -1).T
         if y is not None:
             y = y.flatten()
@@ -157,3 +162,33 @@ def save_obj(obj, opath):
 def load_obj(srcpath):
     with open(srcpath, "rb") as src:
         return dill.load(src)
+
+def testing():
+    from harmonizer.config import OUTPUT, DOWNSAMPLEVIIRS, SAMPLEMETHOD, STAGE_TMP, VIIRS_TMP
+    from harmonizer.transformers.gbm import XGB
+    from harmonizer.transformers.curve import CurveFit
+    import os
+    opath = Path(OUTPUT, "tmptest")
+    artifactpath = Path("TMP_harmonizer.dill")
+    srcpath = next(VIIRS_TMP.glob("*2013*.tif"))
+    os.system("rm /home/diggity/nlt/NTL_Harmonizer/data/tmp/staging/VNL_v2_npp_2013_global_vcmcfg_c202101211500.average.tif")
+    finalharmonizer = Harmonizer(
+            dmspdir=opath,
+            viirsdir=VIIRS_TMP,
+            stagedir=STAGE_TMP,
+            output=opath,
+            downsampleVIIRS=DOWNSAMPLEVIIRS,
+            samplemethod=SAMPLEMETHOD,
+            polyX=False,
+            shift=False,
+            idX=False,
+            epochs=100,
+            est=CurveFit(),
+            opath=artifactpath,
+        )
+    # return finalharmonizer
+    finalharmonizer.fit()
+    finalharmonizer.transform(srcpath)
+
+if __name__ == "__main__":
+    testing()

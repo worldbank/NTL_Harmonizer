@@ -66,6 +66,7 @@ def training_diagnostics(srcdir, resultsdir, thresh=1):
     else:
         adresults = "AD test rejected null at 2.5% alpha.\nIndicates different population. (unexpected)."
     adlabel = f"AD stat: {stat:.4f} (est. p={sig})\n{adresults}"
+    scores = f"RMSD: {rmsd:.4f}\nSpearman R: {r2:.4f} (p={p})"
     raster_scatter(
         x=x,
         y=y,
@@ -74,7 +75,7 @@ def training_diagnostics(srcdir, resultsdir, thresh=1):
         title='2013 VIIRS-DNB (harmonized) vs DMSP-OLS ("lit pixels") for ROI',
         opath=Path(resultsdir, "2013scatter.png"),
         alpha=0.01,
-        label=f"RMSD: {rmsd:.4f}\nSpearman R: {r2:.4f} (p={p})",
+        # label=scores,
     )
     raster_hist(
         x=x,
@@ -86,8 +87,13 @@ def training_diagnostics(srcdir, resultsdir, thresh=1):
         ylabel="Frequency",
         title='Distribution of 2013 VIIRS-DNB (harmonized) and DMSP-OLS per pixel radiance ("lit pixels") for ROI',
         opath=Path(resultsdir, "2013hist.png"),
-        text=adlabel,
+        # text=adlabel,
     )
+    with open(Path(resultsdir, "results_summary.txt"), 'w') as f:
+        f.write(f'Harmonizer stats:\n')
+        f.write(adlabel+"\n")
+        f.write("*" * 25 + '\n')
+        f.write(scores)
     vprofile.update(count=2)
     with rasterio.open(
         Path(resultsdir, "2013_comparison_raster.tif"), "w", **vprofile
@@ -128,17 +134,21 @@ def get_yr_from_path(srcpath):
         if str(yr) in str(srcpath):
             return yr
 
-def plot_final_time_series(outputdir, resultsdir, thresh=None):
+def plot_final_time_series(dmsp_raw, viirs_raw, outputdir, resultsdir, thresh=None):
     dmsp = filepathsearch(outputdir, "F", "*.tif", firstonly=False)
     dmspyrs = [get_yr_from_path(i) for i in dmsp]
     viirs = filepathsearch(outputdir, "VNL", "*.tif", firstonly=False)
     viirsyrs = [get_yr_from_path(i) for i in viirs]
+    dmsp_raw = [p for p in dmsp_raw.glob("*.tif") if p.name in [d.name for d in dmsp]]
+    viirs_raw = list(viirs_raw.glob("*.tif"))
     dmsp_avg = get_series(dmsp, np.nanmean, thresh=thresh)
+    dmsp_raw_avg = get_series(dmsp_raw, np.nanmean, thresh=thresh)
     viirs_avg = get_series(viirs, np.nanmean, thresh=thresh)
+    viirs_raw_avg = get_series(viirs_raw, np.nanmean, thresh=thresh)
     plot_timeseries(
-        seqs=[dmsp_avg, viirs_avg],
-        yrs=[dmspyrs, viirsyrs],
-        labels=["DMSP-OLS", "VIIRS-OLS (harmonized)"],
+        seqs=[dmsp_raw_avg, dmsp_avg, viirs_raw_avg, viirs_avg],
+        yrs=[dmspyrs, dmspyrs, viirsyrs, viirsyrs],
+        labels=["DMSP-OLS (un-adj)", "DMSP-OLS (intercalibrated)", "VIIRS-OLS (un-adj.)", "VIIRS-OLS (harmonized)"],
         opath=Path(resultsdir, "harmonized_ts_mean.png"),
         xlabel="Year",
         ylabel="mean radiance per pixel (DN)",
@@ -147,10 +157,12 @@ def plot_final_time_series(outputdir, resultsdir, thresh=None):
 
     dmsp_md = get_series(dmsp, np.nanmedian, thresh=thresh)
     viirs_md = get_series(viirs, np.nanmedian, thresh=thresh)
+    dmsp_raw_md = get_series(dmsp_raw, np.nanmedian, thresh=thresh)
+    viirs_raw_md = get_series(viirs_raw, np.nanmedian, thresh=thresh)
     plot_timeseries(
-        seqs=[dmsp_md, viirs_md],
-        yrs=[dmspyrs, viirsyrs],
-        labels=["DMSP-OLS", "VIIRS-OLS (harmonized)"],
+        seqs=[dmsp_raw_md, dmsp_md, viirs_raw_md, viirs_md],
+        yrs=[dmspyrs, dmspyrs, viirsyrs, viirsyrs],
+        labels=["DMSP-OLS (un-adj)", "DMSP-OLS (intercalibrated)", "VIIRS-OLS (un-adj.)", "VIIRS-OLS (harmonized)"],
         opath=Path(resultsdir, "harmonized_ts_median.png"),
         xlabel="Year",
         ylabel="median radiance per pixel (DN)",
@@ -158,10 +170,12 @@ def plot_final_time_series(outputdir, resultsdir, thresh=None):
     )
     dmsp_sol = get_series(dmsp, np.nansum, thresh=thresh)
     viirs_sol = get_series(viirs, np.nansum, thresh=thresh)
+    dmsp_raw_sol = get_series(dmsp_raw, np.nansum, thresh=thresh)
+    viirs_raw_sol = get_series(viirs_raw, np.nansum, thresh=thresh)
     plot_timeseries(
-        seqs=[dmsp_sol, viirs_sol],
-        yrs=[dmspyrs, viirsyrs],
-        labels=["DMSP-OLS", "VIIRS-OLS (harmonized)"],
+        seqs=[dmsp_raw_sol, dmsp_sol, viirs_raw_sol, viirs_sol],
+        yrs=[dmspyrs, dmspyrs, viirsyrs, viirsyrs],
+        labels=["DMSP-OLS (un-adj)", "DMSP-OLS (intercalibrated)", "VIIRS-OLS (un-adj.)", "VIIRS-OLS (harmonized)"],
         opath=Path(resultsdir, "harmonized_ts_sum.png"),
         xlabel="Year",
         ylabel="Sum of Lights (DN)",
@@ -200,13 +214,13 @@ def year_scatter(
     raster_scatter(
         x=x,
         y=y,
-        xlabel="Input composite",
-        ylabel="Processed image",
+        xlabel="Un-adjusted input (DN or nW/cm2/sr)",
+        ylabel="After harmonization (DN)",
         title="Processed data vs input data for ROI",
         opath=Path(dstdir, f"{srcpath.name}_scatter.png"),
         alpha=0.5,
-        label=f"Spearman R: {r2:.4f} (p={p})",
     )
+    return (srcpath.name, f"Spearman R: {r2:.4f} (p={p})")
 
 
 def create_year_scatters(
@@ -215,9 +229,14 @@ def create_year_scatters(
     dstdir = Path(resultsdir, "scatters_by_year")
     dstdir.mkdir(exist_ok=True)
     srcpaths = outputdir.glob("*.tif")
+    printouts = []
     for srcpath in tqdm(srcpaths):
-        year_scatter(srcpath, dmsp_clip, viirs_clip, viirs_tmp, dstdir, thresh)
+        printouts.append(year_scatter(srcpath, dmsp_clip, viirs_clip, viirs_tmp, dstdir, thresh))
 
+    printouts.sort()
+    with open(Path(dstdir, "Spearman R by year.txt"), 'w') as f:
+        for line in printouts:
+            f.write(line[0] + ":\t\t\t" + line[1] +"\n")
 
 def make_movie(srcpaths, dstpath, fps):
     series = []
@@ -239,6 +258,8 @@ def create_all_movies(dmsp_clip, viirs_tmp, output, resultsdir, selectDMSP, fps=
 def main(outputdir, resultsdir, dmsp_clip, viirs_clip, viirs_tmp, lowerthresh, selectDMSP):
     training_diagnostics(srcdir=outputdir, resultsdir=resultsdir, thresh=lowerthresh)
     plot_final_time_series(
+        dmsp_raw=dmsp_clip,
+        viirs_raw=viirs_clip,
         outputdir=outputdir, resultsdir=resultsdir, thresh=lowerthresh
     )
     create_year_scatters(
