@@ -6,7 +6,7 @@ from harmonizer.utils import filepathsearch
 from harmonizer.diagnostics import get_yr_from_path, get_series
 from harmonizer.config import DMSP_PREFERRED_SATS
 
-GDPFPATH= Path(os.environ['NLT'], "NTL_Harmonizer","files","nuts3_gdp_EU.csv")
+GDPFPATH= Path(os.environ['NLT'], "NTL_Harmonizer","files","nama_10r_3gdp.csv")
 
 def convert_float(x):
     try:
@@ -15,8 +15,15 @@ def convert_float(x):
         return None
 
 def load_prep(srcpath=GDPFPATH):
-    df = pd.read_csv(srcpath, sep=';',engine="python",skipfooter=3)
-    return df.set_index('GEO/TIME').T.applymap(lambda x: convert_float(x))
+    df = pd.read_csv(srcpath).drop(["UNIT", "Flag and Footnotes"], axis=1)
+    idx = [("DE" in i) | ("ES" in i) | ("IT" in i) | ("FR" in i) for i in df.GEO]
+    df = df.loc[idx, :]
+    df['country'] = df["GEO"].str[:2]
+    df['admin1'] = df['GEO'].str[2:3]
+    df['admin2'] = df['GEO'].str[3:4]
+    df['admin3'] = df['GEO'].str[4:]
+    df['level'] = (df.loc[:, ["admin1", "admin2","admin3"]] != "").sum(axis=1)
+    return df
 
 def extract_time_series(dmsp_in,
                         viirs_in,
