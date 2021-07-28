@@ -22,6 +22,7 @@ from harmonizer.transformers.dmspcalibrate import DMSPstepwise
 from harmonizer.transformers.viirsprep import VIIRSprep
 from harmonizer.transformers.harmonize import Harmonizer, save_obj
 from harmonizer.transformers.gbm import XGB
+from harmonizer.transformers.curve import CurveFit, NoFit
 from harmonizer.diagnostics import main as diagnosticsmain
 from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
@@ -61,7 +62,14 @@ def viirs_batch(srcdir, dstdir):
         prepper.transform(srcpath)
 
 
-def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
+def harmonize_batch(dmspdir,
+                    viirsdir,
+                    stage_dir,
+                    output,
+                    artifactpath,
+                    polyX,
+                    shift,
+                    est):
     srcpaths = viirsdir.glob("*.tif")
     finalharmonizer = Harmonizer(
         dmspdir=dmspdir,
@@ -70,10 +78,11 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
         output=output,
         downsampleVIIRS=DOWNSAMPLEVIIRS,
         samplemethod=SAMPLEMETHOD,
-        polyX=True,
-        idX=True,
+        polyX=polyX,
+        shift=shift,
+        idX=False,
         epochs=100,
-        est=XGB(),
+        est=est,
         opath=artifactpath,
     )
     print("training model on ROI data...")
@@ -83,7 +92,7 @@ def harmonize_batch(dmspdir, viirsdir, stage_dir, output, artifactpath):
     save_obj(finalharmonizer, finalharmonizer.opath)
 
 
-def main(trialname, crop, roipath=ROIPATH):
+def main(trialname, crop, roipath=ROIPATH, polyX=True, shift=True, est=XGB()):
     trialout = Path(OUTPUT, trialname)
     trialout.mkdir(exist_ok=True)
     trialresults = Path(RESULTS, trialname)
@@ -118,6 +127,9 @@ def main(trialname, crop, roipath=ROIPATH):
         stage_dir=STAGE_TMP,
         output=trialout,
         artifactpath=Path(ARTIFACTS, "harmonizer.dill"),
+        polyX=polyX,
+        shift=shift,
+        est=est
     )
     print(f"time to harmonize: {time.time() - t3:.4f}s")
 
@@ -130,7 +142,7 @@ def main(trialname, crop, roipath=ROIPATH):
         viirs_clip=VIIRS_CLIP,
         viirs_tmp=VIIRS_TMP,
         selectDMSP=DMSP_PREFERRED_SATS,
-        lowerthresh=3,
+        lowerthresh=1,
     )
     print(f"time to plot results: {time.time() - t4:.4f}s")
     print("DONE!")
@@ -149,7 +161,38 @@ def process_all_test_samples():
         print(f"processing {roi.stem}...")
         print("*" * 25)
         roipath = roi
-        main(trialname=roipath.stem, crop=True, roipath=roipath)
+        main(trialname=roipath.stem,
+             crop=True,
+             roipath=roipath)
+    print("DONE!")
+    print(f"total runtime: {time.time() - t0:.4f}s")
+
+def all_test_all_trials():
+    # this runs the harmonizer for:
+    # 1. no fit
+    # 2. poly fit (3 degress)
+    # 3. XGB
+    # and creates results plots
+    # on each of the shapefiles in the `roifiles/` directory.
+    t0 = time.time()
+    rois = Path(ROOT,"roifiles").glob("**/*.shp")
+    for roi in tqdm(rois):
+        print("*"*25)
+        print(f"processing {roi.stem}...")
+        print("*" * 25)
+        roipath = roi
+        for name, crop, polyX, shift, est in zip(["nofit", "poly","XGB"],
+                                                   [True, False, False],
+                                                   [False, False, True],
+                                                   [False, False, True],
+                                            [NoFit(), CurveFit(), XGB()]
+                                            ):
+            main(trialname=roipath.stem+"__"+name,
+                 crop=crop,
+                 roipath=roipath,
+                 polyX=polyX,
+                 shift=shift,
+                 est=est)
     print("DONE!")
     print(f"total runtime: {time.time() - t0:.4f}s")
 
@@ -158,12 +201,15 @@ def get_args():
     parser.add_argument("-n", "--name", default="test", help="trial name")
     parser.add_argument("-nc", "--nocrop", action="store_false", help="skips cropping")
     parser.add_argument("-a", "--alltest", action="store_true", help="runs all test cases in roifiles")
+    parser.add_argument("-f", "--fullrun", action="store_true", help="runs all trials for all test cases in roifiles")
     args = parser.parse_args()
-    return args.name, args.nocrop, args.alltest
+    return args.name, args.nocrop, args.alltest, args.fullrun
 
 
 if __name__ == "__main__":
-    trialname, crop, alltest = get_args()
+    trialname, crop, alltest, fullrun = get_args()
+    if fullrun:
+        all_test_all_trials()
     if alltest:
         process_all_test_samples()
     else:
