@@ -16,13 +16,13 @@ ROOT = Path(os.environ["NLT"],"NTL_Harmonizer")
 # roipath = "roifiles/conus_shp/conus.shp"
 # roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
 # roipath = "roifiles/gadm36_ESP_shp/gadm36_ESP_0.shp"
-# roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
+roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
 # roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
 # roipath = "roifiles/gadm36_JPN_shp/gadm36_JPN_0.shp"
 # roipath = "roifiles/gadm36_MUS_shp/gadm36_MUS_0.shp"
 # roipath = "roifiles/gadm36_NIC_shp/gadm36_NIC_0.shp"
 # roipath = "roifiles/gadm36_PRI_shp/gadm36_PRI_0.shp"
-roipath = "roifiles/gadm36_SLV_shp/gadm36_SLV_0.shp"
+# roipath = "roifiles/gadm36_SLV_shp/gadm36_SLV_0.shp"
 # roipath = "roifiles/gadm36_UGA_shp/gadm36_UGA_0.shp"
 
 ###################################
