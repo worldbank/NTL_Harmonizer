@@ -28,7 +28,6 @@ from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
 from tqdm import tqdm
 
-
 def crop_batch(srcdir, dstdir, geompath, n_jobs):
     srcpaths = srcdir.glob("*.tif")
     if n_jobs > 1:
@@ -38,6 +37,7 @@ def crop_batch(srcdir, dstdir, geompath, n_jobs):
     else:
         for srcpath in tqdm(srcpaths):
             crop_by_geom(srcpath, dstdir=dstdir, geompath=geompath)
+
 
 
 def dmsp_batch(srcdir, dstdir, selectDMSP):
@@ -195,6 +195,7 @@ def all_test_all_trials():
                  est=est)
     print("DONE!")
     print(f"total runtime: {time.time() - t0:.4f}s")
+
 
 def get_args():
     parser = argparse.ArgumentParser()

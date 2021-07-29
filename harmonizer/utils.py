@@ -15,6 +15,12 @@ def crop_by_geom(srcpath, dstdir, geompath):
         f"gdalwarp -cutline {str(geompath)} -crop_to_cutline {str(srcpath)} {str(dstpath)}"
     )
 
+def crop_by_geom_cwhere(srcpath, dstdir, geompath, query_val, query_attr):
+    dstpath = Path(dstdir, srcpath.name)
+    os.system(
+        f'gdalwarp -cutline {str(geompath)} -cwhere "{query_attr}=\'{query_val}\'" -crop_to_cutline {str(srcpath)} {str(dstpath)}'
+    )
+
 
 def resample_raster(srcpath, refpath, dstdir, method):
     with rasterio.open(refpath) as src:
