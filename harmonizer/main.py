@@ -92,7 +92,12 @@ def harmonize_batch(dmspdir,
     save_obj(finalharmonizer, finalharmonizer.opath)
 
 
-def main(trialname, crop, roipath=ROIPATH, polyX=True, shift=True, est=XGB()):
+def main(trialname,
+         crop,
+         roipath=ROIPATH,
+         polyX=True,
+         shift=False,
+         est=XGB()):
     trialout = Path(OUTPUT, trialname)
     trialout.mkdir(exist_ok=True)
     trialresults = Path(RESULTS, trialname)
