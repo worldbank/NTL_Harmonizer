@@ -1,8 +1,6 @@
 # dmsp-viirs-intercalibration [beta]
 Repo for project to harmonize DMSP-OLS and VIIRS-DNB nighttime lights to form a coherent time series across platforms.
 
-A tutorial is being developed to provide usage instructions and examples.
-
 Feedback on this is welcome and encouraged. Please feel free to create branches and add Issues within this repo.
 
 ## File structure
