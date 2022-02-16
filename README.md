@@ -59,7 +59,8 @@ If you don't and are unfamiliar with GDAL, it's highly recommended you use `cond
 You should now have an active environment (either pip/venv or conda) with all required dependencies.
 
 ### Step 3. Set config variables
-1. From CLI at root directory, enter: `$ python -m harmonizer.config`. This will create empty directories for the data later.
+1. Open the file `harmonizer/config.py` and make sure the `ROOT` path (near the top of the file) is set to point to this working directory. 
+2. From CLI at root directory, enter: `$ python -m harmonizer.config`. This will create empty directories for the data later.
     - Note: the `config.py` file contains a variable `roipath` that you'll update with your ROI shapefile in a moment (see below)
     - Dont change any of the other variables to use default settings.
 
@@ -90,6 +91,8 @@ Depending on internet bandwidth speed this will take up to 15-20 minutes.
   - Move these files to the folder in this directory: `data/dmspcomps/` that was created when you initialized the `config.py` file in step 3. (Or you can set this to be your browser's download location.)
 
 #### 4B: Download VIIRS-DNB data
+*Note:* As of February 2022, the most recent annual composite via Earth Observation Group (EOG) is for the year 2020. Paid subscriptions may be available for more recent data, but you will need to inquire with the EOG website.
+
 VIIRS-DNB source (Earth Observation Group's Version 2 annual composites: https://eogdata.mines.edu/products/vnl/#annual_v2)
 
 EOG requires a user account to download data. This is free and easy to do but makes automatic downloading more complex.
