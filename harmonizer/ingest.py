@@ -157,14 +157,32 @@ class STACCatalogClient:
     The catalogs are plain JSON files in S3 (no STAC API), so we use stdlib
     HTTP and do our own filtering. Output is a stream of STAC item dicts that
     intersect the ROI in space and lie inside the date range.
+
+    For DMSP, an optional `dmsp_preferred_sats` mapping (same shape as
+    `harmonizer.config.DMSP_PREFERRED_SATS`) restricts the walk to only the
+    `F{sat}{year}` child catalogs that match the preferred-satellite-per-year
+    convention from Li et al. 2017 — keeps downstream monthly composites
+    single-satellite so DMSPstepwise can apply consistent coefficients.
     """
 
-    def __init__(self, sensor: str, max_workers: int = 16):
+    def __init__(
+        self,
+        sensor: str,
+        max_workers: int = 16,
+        dmsp_preferred_sats: Optional[dict[str, list[str]]] = None,
+    ):
         if sensor not in SENSOR_CONFIGS:
             raise ValueError(f"Unknown sensor: {sensor}")
         self.sensor = sensor
         self.cfg: SensorConfig = SENSOR_CONFIGS[sensor]
         self.max_workers = max_workers
+        self._dmsp_allowed_sat_years: Optional[set[str]] = None
+        if dmsp_preferred_sats is not None and sensor == SENSOR_DMSP:
+            self._dmsp_allowed_sat_years = {
+                f"{sat}{year}"
+                for sat, years in dmsp_preferred_sats.items()
+                for year in years
+            }
 
     def _resolve(self, base_url: str, href: str) -> str:
         # urljoin handles "./foo" against ".../catalog.json" correctly
@@ -181,8 +199,14 @@ class STACCatalogClient:
             child_url = self._resolve(self.cfg.catalog_url, href)
             # period_id is the last directory segment in the href, e.g. F162005 or 201501
             period_id = Path(urllib.parse.urlparse(child_url).path).parent.name
-            if _period_in_range(period_id, self.sensor, start, end):
-                urls.append(child_url)
+            if not _period_in_range(period_id, self.sensor, start, end):
+                continue
+            if (
+                self._dmsp_allowed_sat_years is not None
+                and period_id not in self._dmsp_allowed_sat_years
+            ):
+                continue
+            urls.append(child_url)
         return urls
 
     def _item_urls_in_period(self, period_url: str) -> list[str]:
@@ -409,6 +433,7 @@ def ingest(
     cache_dir: Path,
     max_orbits: Optional[int] = None,
     skip_layers: Iterable[str] = (),
+    dmsp_preferred_sats: Optional[dict[str, list[str]]] = None,
 ) -> list[dict]:
     """Resolve and locally cache all orbit triplets matching ROI + date range.
 
@@ -422,7 +447,7 @@ def ingest(
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
 
-    client = STACCatalogClient(sensor)
+    client = STACCatalogClient(sensor, dmsp_preferred_sats=dmsp_preferred_sats)
     reader = WindowedCOGReader(cache_dir)
 
     skip = set(skip_layers)

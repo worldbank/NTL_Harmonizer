@@ -55,6 +55,12 @@ class DMSPstepwise:
         assert len(key) == 1
         return self.f16Acoefs[key[0]]
 
+    def get_F16coefs_from_satyear(self, satellite_year: str):
+        key = [k for k in self.f16Acoefs.keys() if k == satellite_year]
+        if not key:
+            raise KeyError(f"no F16A coefs for {satellite_year}")
+        return self.f16Acoefs[key[0]]
+
     def process(self, X, coefs):
         shp = X.shape
         X = self.get_polyterms(X)
@@ -62,12 +68,45 @@ class DMSPstepwise:
         X = clip_arr(X, floor=0.0, ceiling=63.0)
         return X
 
-    def transform(self, srcpath):
+    def _process_for_satellite_year(self, X, satellite_year: str):
+        """Apply Li 2017 stepwise calibration given an explicit satellite-year tag.
+
+        `satellite_year` is the legacy compound key, e.g. "F142000", "F162005".
+        Falls back to plain clipping for sat/year combinations without
+        published coefficients (currently F10/F12 across all years).
+        """
+        sat = satellite_year[:3]
+        if sat == "F14":
+            return self.process(X, self.f14coefs)
+        if sat == "F15" and satellite_year in {
+            "F152003", "F152004", "F152005", "F152006", "F152007",
+        }:
+            return self.process(X, self.f15coefs)
+        if sat == "F16":
+            try:
+                coefs = self.get_F16coefs_from_satyear(satellite_year)
+            except KeyError:
+                return clip_arr(X, floor=0.0, ceiling=63.0)
+            X = self.process(X, coefs)
+            return self.process(X, self.f16Bcoefs)
+        if satellite_year == "F182010":
+            return self.process(X, self.f18coefs)
+        return clip_arr(X, floor=0.0, ceiling=63.0)
+
+    def transform(self, srcpath, satellite_year: str | None = None, dstpath=None):
+        """Read radiance, apply calibration, write to dstdir.
+
+        If `satellite_year` is provided (e.g. "F162005"), pick coefs by it.
+        Otherwise fall back to the legacy substring match against the source
+        path — needed for the old per-file annual-composite layout.
+        """
         with rasterio.open(srcpath) as src:
             X = src.read(1)
             profile = src.profile
 
-        if "F14" in str(srcpath):
+        if satellite_year is not None:
+            X = self._process_for_satellite_year(X, satellite_year)
+        elif "F14" in str(srcpath):
             X = self.process(X, self.f14coefs)
         elif any(
             sat in str(srcpath)
@@ -83,6 +122,8 @@ class DMSPstepwise:
         else:
             X = clip_arr(X, floor=0.0, ceiling=63.0)
 
-        dstpath = Path(self.dstdir, srcpath.name)
+        if dstpath is None:
+            dstpath = Path(self.dstdir, srcpath.name)
         with rasterio.open(dstpath, "w", **profile) as dst:
             dst.write(X, 1)
+        return dstpath

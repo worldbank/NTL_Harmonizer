@@ -1,71 +1,83 @@
-from pathlib import Path
+"""Pipeline configuration.
+
+The new pipeline is WB-LEN native: nothing is downloaded ahead of time. ROI +
+date range drive STAC-windowed reads against the public bucket, and every
+intermediate stage caches its output under `data/cache/...`.
+
+Legacy paths (DMSP_IN, VIIRS_IN, DMSP_CLIP, VIIRS_CLIP, *_TMP, *_URLS) are no
+longer needed and have been retired. If you have notebooks or scripts that
+imported them, see `harmonizer.downloader` for the deprecation note.
+"""
+from __future__ import annotations
+
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 
 # set to absolute location of this directory
-ROOT = Path(os.environ["NLT"],"NTL_Harmonizer")
+ROOT = Path(os.environ.get("NLT", str(Path(__file__).resolve().parent.parent.parent)), "NTL_Harmonizer")
 
 #########################
 # ROI FILE
 #########################
-
-# The following country boundaries are included
-# as test examples. To use them, uncomment the corresponding line below
-# To provide your own shapefile, save it in the "roifiles/" folder
-# and set the relative path to the roipath variable following these examples
-
-# roipath = "roifiles/conus_shp/conus.shp"
-# roipath = "roifiles/gadm36_DEU_shp/gadm36_DEU_0.shp"
-# roipath = "roifiles/gadm36_ESP_shp/gadm36_ESP_0.shp"
+# Either a shapefile path, or an "xmin,ymin,xmax,ymax" CSV (EPSG:4326 lon/lat).
+# Examples:
+#   roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
+#   roipath = "2.0,48.5,3.0,49.5"   # tight Paris bbox
 roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
-# roipath = "roifiles/gadm36_ITA_shp/gadm36_ITA_0.shp"
-# roipath = "roifiles/gadm36_JPN_shp/gadm36_JPN_0.shp"
-# roipath = "roifiles/gadm36_MUS_shp/gadm36_MUS_0.shp"
-# roipath = "roifiles/gadm36_NIC_shp/gadm36_NIC_0.shp"
-# roipath = "roifiles/gadm36_PRI_shp/gadm36_PRI_0.shp"
-# roipath = "roifiles/gadm36_SLV_shp/gadm36_SLV_0.shp"
-# roipath = "roifiles/gadm36_UGA_shp/gadm36_UGA_0.shp"
+
+###################################
+# DATE RANGE & PERIOD CADENCE
+###################################
+# Default to a window where DMSP and VIIRS overlap richly enough to train.
+# Start where DMSP coverage begins; end where the legacy DMSP series ends.
+START_DATE = datetime(1992, 1, 1, tzinfo=timezone.utc)
+END_DATE = datetime(2013, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+# strftime pattern for the period key. "%Y%m" = monthly (default),
+# "%Y" = annual, "%Y%m%d" = daily.
+PERIOD_FORMAT = "%Y%m"
+
+# Year used to fit the harmonizer (DMSP and VIIRS overlap in 2012–2013).
+TRAIN_YEAR = 2013
+
+# Lunar-illumination masking mode used in OrbitPrep. Matches the EOG zero-LI
+# composite convention by default. Valid: "zero" | "low" | "all".
+LUNAR_MASK_MODE = "zero"
 
 ###################################
 # OPTIONAL CHANGES
 ###################################
 
-# set GDAL re-sampling algorithm (or leave as this default)
-# options listed here: https://gdal.org/programs/gdalwarp.html#cmdoption-gdalwarp-r
+# rasterio.warp resampling kernel (used for cross-sensor alignment in the
+# Harmonizer). Options: average, bilinear, cubic, nearest, mode, max, min,
+# med, q1, q3.
 SAMPLEMETHOD = "average"
 
-# set option for resampling (downsample VIIRS-DNB or leave as default True)
-# more details described in the harmonizer/harmonize.py script
+# True ⇒ output time series is uniformly at DMSP 30 arc-sec.
+# False ⇒ DMSP training is upsampled to VIIRS 15 arc-sec; VIIRS retains 15 arc-sec
+# resolution at inference. See harmonize.py docstring for full discussion.
 DOWNSAMPLEVIIRS = True
 
 ###################################
-# YOU SHOULDNT NEED TO CHANGE THESE
+# PATHS — usually no need to change
 ###################################
-
-DMSP_URLS = Path(ROOT, "files", "noaa_dmsp_annual_urls.txt")
-VIIRS_URLS = Path(ROOT, "files", "eog_viirs_annualv2_urls.txt")
-ROIPATH = Path(ROOT, roipath)
+ROIPATH = Path(ROOT, roipath) if not roipath.count(",") == 3 else roipath
 DATA = Path(ROOT, "data")
 DATA.mkdir(exist_ok=True)
-DMSP_IN = Path(
-    DATA, "dmspcomps"
-)  # if you manually download DMSP files, save them here (e.g. <pathtothisrepo>/data/dmspcomps)
-DMSP_IN.mkdir(exist_ok=True)
-VIIRS_IN = Path(
-    DATA, "viirscomps"
-)  # if you manually download VIIRS files, save them here (e.g. <pathtothisrepo>/data/viirscomps)
-VIIRS_IN.mkdir(exist_ok=True)
-TMP = Path(DATA, "tmp")
-TMP.mkdir(exist_ok=True)
-DMSP_TMP = Path(TMP, "dmsp")
-DMSP_TMP.mkdir(exist_ok=True)
-VIIRS_TMP = Path(TMP, "viirs")
-VIIRS_TMP.mkdir(exist_ok=True)
-DMSP_CLIP = Path(TMP, "dmspclip")
-DMSP_CLIP.mkdir(exist_ok=True)
-VIIRS_CLIP = Path(TMP, "viirsclip")
-VIIRS_CLIP.mkdir(exist_ok=True)
-STAGE_TMP = Path(TMP, "staging")
-STAGE_TMP.mkdir(exist_ok=True)
+
+# Cache root for the new pipeline. Each stage gets its own subdir so reruns
+# are incremental — windowed COGs and cleaned/composited rasters are reused.
+CACHE = Path(DATA, "cache")
+CACHE.mkdir(exist_ok=True)
+INGEST_CACHE = Path(CACHE, "ingest")        # windowed orbit triplets (radiance/li/flag)
+PREP_DIR = Path(CACHE, "orbitprep")          # per-orbit masked + warped clips
+COMPOSITE_DIR = Path(CACHE, "composite")     # per-period (radiance, li, obs_count) composites
+CALIB_DIR = Path(CACHE, "calibrated")        # post-DMSPstepwise per-period DMSP rasters
+VIIRS_PREP_DIR = Path(CACHE, "viirs_prepped")  # post-VIIRSprep per-period VIIRS rasters
+for d in (INGEST_CACHE, PREP_DIR, COMPOSITE_DIR, CALIB_DIR, VIIRS_PREP_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
 ARTIFACTS = Path(ROOT, "artifacts")
 ARTIFACTS.mkdir(exist_ok=True)
 OUTPUT = Path(ROOT, "output")
@@ -74,7 +86,9 @@ RESULTS = Path(ROOT, "results")
 RESULTS.mkdir(exist_ok=True)
 
 
-# based on Li et al 2020
+# Preferred satellite per year for DMSP intercalibration (Li et al. 2017).
+# The ingest layer uses this to filter STAC walks to single-satellite catalogs
+# per year, so monthly composites are never satellite-mixed.
 DMSP_PREFERRED_SATS = {
     "F10": ["1992", "1993", "1994"],
     "F12": ["1995", "1996"],
