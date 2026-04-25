@@ -110,12 +110,22 @@ def _viirs_li_from_radiance(url: str) -> str:  # pragma: no cover
     )
 
 
+# Per-sensor inclusive valid range for the radiance band; pixels outside this
+# range are assumed to be fill / nodata. Empirical observation:
+#   DMSP OLS vis : uint8, valid 0–63, fill = 255
+#   VIIRS rade9  : float32, valid >= 0; sentinel for "no observation" co-occurs
+#                  with li == -999.3, which the LI-validity check already rejects
+DMSP_RADIANCE_RANGE = (0.0, 63.0)
+VIIRS_RADIANCE_RANGE = (0.0, 1.0e9)
+
+
 @dataclass(frozen=True)
 class SensorConfig:
     name: str
     catalog_url: str
     li_nodata: float
     zero_lunar_bit: int
+    radiance_range: tuple[float, float]
     li_from_radiance: Callable[[str], str]
     flag_from_radiance: Callable[[str], str]
 
@@ -126,6 +136,7 @@ SENSOR_CONFIGS = {
         catalog_url=DMSP_CATALOG_URL,
         li_nodata=DMSP_LI_NODATA,
         zero_lunar_bit=OLS_ZERO_LUNAR_ILLUM_BIT,
+        radiance_range=DMSP_RADIANCE_RANGE,
         li_from_radiance=_dmsp_li_from_radiance,
         flag_from_radiance=_dmsp_flag_from_radiance,
     ),
@@ -134,6 +145,7 @@ SENSOR_CONFIGS = {
         catalog_url=VIIRS_CATALOG_URL,
         li_nodata=VIIRS_LI_NODATA,
         zero_lunar_bit=VIIRS_ZERO_LUNAR_ILLUM_BIT,
+        radiance_range=VIIRS_RADIANCE_RANGE,
         li_from_radiance=_viirs_li_from_radiance,
         flag_from_radiance=_viirs_flag_from_radiance,
     ),
