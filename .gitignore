@@ -134,3 +134,8 @@ data/
 artifacts/
 output/
 results/
+
+
+# claude stuff
+.claude/
+NTL_Harmonizer_Clay_Integration_Plan.md
