@@ -350,13 +350,23 @@ def orbitref_from_item(item: dict, sensor: str) -> OrbitRef:
 # ---------------------------------------------------------------------------
 
 # GDAL/rasterio environment for efficient anonymous COG access.
+# The *_TIMEOUT and LOW_SPEED_* settings are load-bearing: without them a single
+# stalled S3 connection will block its worker thread indefinitely, which (under
+# concurrency) can deadlock the whole pool.
 _GDAL_ENV = {
     "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
     "CPL_VSIL_CURL_USE_HEAD": "NO",
     "GDAL_HTTP_MULTIPLEX": "YES",
     "GDAL_HTTP_VERSION": "2",
     "AWS_NO_SIGN_REQUEST": "YES",
+    "GDAL_HTTP_CONNECTTIMEOUT": "15",
+    "GDAL_HTTP_TIMEOUT": "60",
+    "GDAL_HTTP_LOW_SPEED_TIME": "30",
+    "GDAL_HTTP_LOW_SPEED_LIMIT": "1000",
 }
+
+_READ_RETRIES = 3
+_READ_BACKOFF_SECONDS = 2.0
 
 
 class WindowedCOGReader:
@@ -377,9 +387,13 @@ class WindowedCOGReader:
         """Read just the ROI window of a remote COG and write to dst_path.
 
         Returns dst_path on success, None if the ROI does not overlap the COG.
+        Bounded retry on transient failures; the GDAL timeouts in _GDAL_ENV
+        ensure each attempt fails fast rather than hanging the worker.
         """
         # Imported lazily so the module can be imported in environments without
         # rasterio (the catalog walker still works).
+        import time
+
         import rasterio
         from rasterio.windows import Window, from_bounds
         from rasterio.warp import transform_bounds
@@ -387,43 +401,88 @@ class WindowedCOGReader:
         if dst_path.exists() and dst_path.stat().st_size > 0:
             return dst_path
 
-        with rasterio.Env(**_GDAL_ENV):
-            with rasterio.open(url) as src:
-                src_bounds_4326 = transform_bounds(src.crs, "EPSG:4326", *src.bounds)
-                if not _bboxes_intersect(src_bounds_4326, roi_bbox):
-                    return None
-                # Project ROI bbox into source CRS, then to a pixel window.
-                xmin, ymin, xmax, ymax = transform_bounds(
-                    "EPSG:4326", src.crs, *roi_bbox
-                )
-                window = from_bounds(
-                    xmin, ymin, xmax, ymax, transform=src.transform
-                ).round_offsets().round_lengths()
-                # Clip to source extent.
-                full = Window(0, 0, src.width, src.height)
-                window = window.intersection(full)
-                if window.width <= 0 or window.height <= 0:
-                    return None
-                data = src.read(1, window=window)
-                profile = src.profile.copy()
-                profile.update(
-                    height=int(window.height),
-                    width=int(window.width),
-                    transform=src.window_transform(window),
-                    driver="GTiff",
-                    compress="deflate",
-                    tiled=True,
-                )
-                tmp_path = dst_path.with_suffix(dst_path.suffix + ".tmp")
-                with rasterio.open(tmp_path, "w", **profile) as dst:
-                    dst.write(data, 1)
-                os.replace(tmp_path, dst_path)
-        return dst_path
+        last_exc: Optional[Exception] = None
+        for attempt in range(_READ_RETRIES):
+            try:
+                with rasterio.Env(**_GDAL_ENV):
+                    with rasterio.open(url) as src:
+                        src_bounds_4326 = transform_bounds(src.crs, "EPSG:4326", *src.bounds)
+                        if not _bboxes_intersect(src_bounds_4326, roi_bbox):
+                            return None
+                        # Project ROI bbox into source CRS, then to a pixel window.
+                        xmin, ymin, xmax, ymax = transform_bounds(
+                            "EPSG:4326", src.crs, *roi_bbox
+                        )
+                        window = from_bounds(
+                            xmin, ymin, xmax, ymax, transform=src.transform
+                        ).round_offsets().round_lengths()
+                        # Clip to source extent.
+                        full = Window(0, 0, src.width, src.height)
+                        window = window.intersection(full)
+                        if window.width <= 0 or window.height <= 0:
+                            return None
+                        data = src.read(1, window=window)
+                        profile = src.profile.copy()
+                        profile.update(
+                            height=int(window.height),
+                            width=int(window.width),
+                            transform=src.window_transform(window),
+                            driver="GTiff",
+                            compress="deflate",
+                            tiled=True,
+                        )
+                        tmp_path = dst_path.with_suffix(dst_path.suffix + ".tmp")
+                        with rasterio.open(tmp_path, "w", **profile) as dst:
+                            dst.write(data, 1)
+                        os.replace(tmp_path, dst_path)
+                return dst_path
+            except Exception as e:
+                last_exc = e
+                if attempt + 1 < _READ_RETRIES:
+                    time.sleep(_READ_BACKOFF_SECONDS * (attempt + 1))
+        assert last_exc is not None
+        raise last_exc
 
 
 # ---------------------------------------------------------------------------
 # High-level entry point
 # ---------------------------------------------------------------------------
+
+def _process_one_orbit(
+    item: dict,
+    sensor: str,
+    roi_bbox: Bbox,
+    reader: "WindowedCOGReader",
+    layers: list[str],
+) -> Optional[dict]:
+    """Resolve the (radiance, li, flag) triplet for one STAC item and read each
+    layer's ROI window into the local cache. Returns the record dict, or None
+    if we can't even resolve the orbit (e.g. VIIRS LI lookup failed).
+
+    Each layer fetch is wrapped: a single failed layer doesn't drop the orbit;
+    the bad layer is just None in the returned record. Compositing later
+    handles None gracefully.
+    """
+    try:
+        orbit = orbitref_from_item(item, sensor)
+    except Exception as e:
+        log.warning("failed resolving orbit triplet: %s", e)
+        return None
+    record: dict = {"orbit": orbit}
+    urls = {
+        "radiance": orbit.radiance_url,
+        "li": orbit.li_url,
+        "flag": orbit.flag_url,
+    }
+    for layer in layers:
+        dst = reader.cache_path(orbit, layer)
+        try:
+            record[layer] = reader.read_window(urls[layer], roi_bbox, dst)
+        except Exception as e:
+            log.warning("failed reading %s for %s: %s", layer, orbit.orbit_id, e)
+            record[layer] = None
+    return record
+
 
 def ingest(
     roi_bbox: Bbox,
@@ -434,13 +493,22 @@ def ingest(
     max_orbits: Optional[int] = None,
     skip_layers: Iterable[str] = (),
     dmsp_preferred_sats: Optional[dict[str, list[str]]] = None,
+    max_workers: int = 32,
 ) -> list[dict]:
     """Resolve and locally cache all orbit triplets matching ROI + date range.
+
+    Per-orbit work (resolving the LI prefix lookup for VIIRS, then doing
+    windowed COG reads for radiance/li/flag) is dispatched across a thread
+    pool — every step is HTTP-bound, so threads parallelize cleanly. Cache
+    hits in `WindowedCOGReader.read_window` short-circuit, so re-running over
+    a wider date range is incremental.
 
     Returns a list of dicts:
         {"orbit": OrbitRef, "radiance": Path, "li": Path, "flag": Path}
     where Path entries may be None if the layer didn't overlap the ROI or was
-    skipped via skip_layers.
+    skipped via skip_layers. Output ordering reflects completion order (results
+    are collected via as_completed), so a single slow orbit cannot stall reporting
+    or downstream consumption of finished records.
     """
     if start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
@@ -453,24 +521,27 @@ def ingest(
     skip = set(skip_layers)
     layers = [l for l in ("radiance", "li", "flag") if l not in skip]
 
+    items = list(client.find_items(roi_bbox, start, end))
+    if max_orbits is not None:
+        items = items[:max_orbits]
+    log.info("%s: dispatching %d orbits across %d worker(s)", sensor, len(items), max_workers)
+
+    def _worker(item):
+        return _process_one_orbit(item, sensor, roi_bbox, reader, layers)
+
     out: list[dict] = []
-    for i, item in enumerate(client.find_items(roi_bbox, start, end)):
-        if max_orbits is not None and i >= max_orbits:
-            break
-        orbit = orbitref_from_item(item, sensor)
-        record: dict = {"orbit": orbit}
-        urls = {
-            "radiance": orbit.radiance_url,
-            "li": orbit.li_url,
-            "flag": orbit.flag_url,
-        }
-        for layer in layers:
-            dst = reader.cache_path(orbit, layer)
+    progress_every = max(50, len(items) // 20)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(_worker, item) for item in items]
+        for i, fut in enumerate(as_completed(futures)):
             try:
-                record[layer] = reader.read_window(urls[layer], roi_bbox, dst)
+                record = fut.result()
             except Exception as e:
-                log.warning("failed reading %s for %s: %s", layer, orbit.orbit_id, e)
-                record[layer] = None
-        out.append(record)
-        log.info("ingested %s %s", orbit.sensor, orbit.orbit_id)
+                log.warning("orbit worker raised: %s", e)
+                record = None
+            if record is not None:
+                out.append(record)
+            if (i + 1) % progress_every == 0:
+                log.info("%s: %d/%d orbits processed", sensor, i + 1, len(items))
+    log.info("%s: ingest complete (%d records)", sensor, len(out))
     return out
