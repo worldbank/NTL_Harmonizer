@@ -78,7 +78,9 @@ def run_sensor(
     )
     print(f"  orbitprep: {n_with_data}/{len(prepped)} orbits with any valid pixels after mask")
 
-    compositor = Compositor(sensor=sensor, dst_dir=out_root / "composite")
+    compositor = Compositor(
+        sensor=sensor, dst_dir=out_root / "composite", roi_slug=prep.roi_slug,
+    )
     composites = compositor.aggregate(prepped)
     print(f"  composite: {len(composites)} period(s)")
 

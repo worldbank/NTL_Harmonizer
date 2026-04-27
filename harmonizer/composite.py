@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 import numpy as np
 import rasterio
+from rasterio.windows import Window
 
 from harmonizer.constants import SENSOR_CONFIGS
 
@@ -35,6 +36,12 @@ REDUCERS = {
     "median": np.nanmedian,
     "mean": np.nanmean,
 }
+
+# Row-block height for windowed compositing. Bounds the working set to
+# ~(n_orbits × BLOCK_ROWS × width × 4B) per stack instead of the whole frame.
+# 256 rows over a 3530-wide VIIRS grid × 200 orbits ≈ 720 MB per array — well
+# under typical heap pressure thresholds while still amortizing IO overhead.
+_COMPOSITE_BLOCK_ROWS = 256
 
 
 @dataclass
@@ -90,7 +97,13 @@ class Compositor:
         return results
 
     def composite_period(self, period: str, records: list[dict]) -> dict:
-        """Reduce one period's worth of orbit records into a composite triplet."""
+        """Reduce one period's worth of orbit records into a composite triplet.
+
+        Processes one row-strip at a time so the working set stays bounded by
+        ``_COMPOSITE_BLOCK_ROWS`` regardless of how many orbits the period
+        contains or how big the ROI grid is. Numerically identical to the
+        full-frame version since every reducer here is per-pixel.
+        """
         out_dir = self.dst_dir / self.sensor / self.roi_slug / period
         out_dir.mkdir(parents=True, exist_ok=True)
         outs = {
@@ -99,45 +112,67 @@ class Compositor:
             "obs_count": out_dir / "obs_count.tif",
         }
 
-        # Stack radiance and LI from each orbit. They share the common ROI
-        # grid so we just stack arrays.
-        radiance_stack: list[np.ndarray] = []
-        li_stack: list[np.ndarray] = []
-        ref_profile: Optional[dict] = None
-        for rec in records:
-            with rasterio.open(rec["radiance"]) as src:
-                radiance_stack.append(src.read(1))
-                if ref_profile is None:
-                    ref_profile = src.profile.copy()
-            with rasterio.open(rec["li"]) as src:
-                li_stack.append(src.read(1))
+        with rasterio.open(records[0]["radiance"]) as src0:
+            ref_profile = src0.profile.copy()
+            height, width = src0.height, src0.width
 
-        radiance = np.stack(radiance_stack, axis=0)
-        li = np.stack(li_stack, axis=0)
-        # finite mask drives obs_count and gates the reducers
-        valid = np.isfinite(radiance)
-        obs_count = valid.sum(axis=0).astype(np.uint16)
+        rad_paths = [rec["radiance"] for rec in records]
+        li_paths = [rec["li"] for rec in records]
 
-        with np.errstate(all="ignore"):
-            reducer = REDUCERS[self.method]
-            radiance_out = reducer(radiance, axis=0).astype(np.float32)
-            # mean LI weights observations equally; matches obs_count semantics
-            li_out = np.nanmean(li, axis=0).astype(np.float32)
+        rad_profile = self._float_profile(ref_profile)
+        li_profile = self._float_profile(ref_profile)
+        count_profile = self._count_profile(ref_profile)
 
-        below_min = obs_count < self.min_obs
-        radiance_out[below_min] = np.nan
-        li_out[below_min] = np.nan
+        rad_tmp = outs["radiance"].with_suffix(outs["radiance"].suffix + ".tmp")
+        li_tmp = outs["li"].with_suffix(outs["li"].suffix + ".tmp")
+        count_tmp = outs["obs_count"].with_suffix(outs["obs_count"].suffix + ".tmp")
 
-        n_pixels_with_obs = int((obs_count > 0).sum())
+        reducer = REDUCERS[self.method]
+        n_pixels_with_obs = 0
+        max_obs = 0
+
+        with rasterio.open(rad_tmp, "w", **rad_profile) as rad_dst, \
+             rasterio.open(li_tmp, "w", **li_profile) as li_dst, \
+             rasterio.open(count_tmp, "w", **count_profile) as count_dst:
+            for row_off in range(0, height, _COMPOSITE_BLOCK_ROWS):
+                rows = min(_COMPOSITE_BLOCK_ROWS, height - row_off)
+                window = Window(0, row_off, width, rows)
+
+                rad_block = np.empty((len(records), rows, width), dtype=np.float32)
+                li_block = np.empty((len(records), rows, width), dtype=np.float32)
+                for i, (rp, lp) in enumerate(zip(rad_paths, li_paths)):
+                    with rasterio.open(rp) as src:
+                        src.read(1, window=window, out=rad_block[i])
+                    with rasterio.open(lp) as src:
+                        src.read(1, window=window, out=li_block[i])
+
+                valid = np.isfinite(rad_block)
+                obs_count_block = valid.sum(axis=0).astype(np.uint16)
+                with np.errstate(all="ignore"):
+                    rad_out_block = reducer(rad_block, axis=0).astype(np.float32)
+                    li_out_block = np.nanmean(li_block, axis=0).astype(np.float32)
+
+                below_min = obs_count_block < self.min_obs
+                rad_out_block[below_min] = np.nan
+                li_out_block[below_min] = np.nan
+
+                rad_dst.write(rad_out_block, 1, window=window)
+                li_dst.write(li_out_block, 1, window=window)
+                count_dst.write(obs_count_block, 1, window=window)
+
+                n_pixels_with_obs += int((obs_count_block > 0).sum())
+                if obs_count_block.size:
+                    max_obs = max(max_obs, int(obs_count_block.max()))
+
+        rad_tmp.replace(outs["radiance"])
+        li_tmp.replace(outs["li"])
+        count_tmp.replace(outs["obs_count"])
+
         log.info(
             "%s %s: %d orbits → composite has %d/%d pixels with >=1 obs (max=%d)",
             self.sensor, period, len(records), n_pixels_with_obs,
-            obs_count.size, int(obs_count.max()) if obs_count.size else 0,
+            height * width, max_obs,
         )
-
-        self._write_float(outs["radiance"], radiance_out, ref_profile)
-        self._write_float(outs["li"], li_out, ref_profile)
-        self._write_count(outs["obs_count"], obs_count, ref_profile)
 
         return {
             "sensor": self.sensor,
@@ -149,7 +184,7 @@ class Compositor:
     # ---- IO helpers ---------------------------------------------------
 
     @staticmethod
-    def _write_float(path: Path, arr: np.ndarray, ref_profile: dict) -> None:
+    def _float_profile(ref_profile: dict) -> dict:
         profile = ref_profile.copy()
         profile.update(
             dtype="float32",
@@ -157,15 +192,14 @@ class Compositor:
             count=1,
             compress="deflate",
             tiled=True,
+            blockxsize=256,
+            blockysize=256,
             driver="GTiff",
         )
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        with rasterio.open(tmp, "w", **profile) as dst:
-            dst.write(arr.astype(np.float32), 1)
-        tmp.replace(path)
+        return profile
 
     @staticmethod
-    def _write_count(path: Path, arr: np.ndarray, ref_profile: dict) -> None:
+    def _count_profile(ref_profile: dict) -> dict:
         profile = ref_profile.copy()
         profile.update(
             dtype="uint16",
@@ -173,9 +207,8 @@ class Compositor:
             count=1,
             compress="deflate",
             tiled=True,
+            blockxsize=256,
+            blockysize=256,
             driver="GTiff",
         )
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        with rasterio.open(tmp, "w", **profile) as dst:
-            dst.write(arr.astype(np.uint16), 1)
-        tmp.replace(path)
+        return profile
