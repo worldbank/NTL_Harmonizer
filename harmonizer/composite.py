@@ -44,7 +44,14 @@ class Compositor:
     Parameters
     ----------
     sensor : "dmsp" | "viirs_npp"
-    dst_dir : output root; composites land in {dst_dir}/{sensor}/{period}/
+    dst_dir : output root; composites land in
+              ``{dst_dir}/{sensor}/{roi_slug}/{period}/`` (see
+              ``harmonizer.utils.roi_slug``). The slug must match the one
+              from the ``OrbitPrep`` instance that produced the input
+              records, otherwise composites would be written to a path
+              divorced from their source grid identity.
+    roi_slug : opaque cache namespace — pass ``OrbitPrep.roi_slug`` from the
+               instance whose outputs you're compositing.
     method : "median" (default) or "mean"
     period_format : strftime pattern for the period key. Default "%Y%m"
                     (monthly). "%Y" for annual, "%Y%m%d" for daily.
@@ -54,6 +61,7 @@ class Compositor:
 
     sensor: str
     dst_dir: Path
+    roi_slug: str
     method: str = "median"
     period_format: str = "%Y%m"
     min_obs: int = 1
@@ -83,7 +91,7 @@ class Compositor:
 
     def composite_period(self, period: str, records: list[dict]) -> dict:
         """Reduce one period's worth of orbit records into a composite triplet."""
-        out_dir = self.dst_dir / self.sensor / period
+        out_dir = self.dst_dir / self.sensor / self.roi_slug / period
         out_dir.mkdir(parents=True, exist_ok=True)
         outs = {
             "radiance": out_dir / "radiance.tif",

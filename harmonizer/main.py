@@ -60,8 +60,14 @@ def _build_sensor_composites(
     end: datetime,
     lunar_mode: str,
     period_format: str,
-) -> list[dict]:
-    """Run ingest → orbitprep → composite for one sensor, return composite records."""
+) -> tuple[list[dict], str]:
+    """Run ingest → orbitprep → composite for one sensor.
+
+    Returns ``(composites, roi_slug)``. The slug identifies the cache
+    namespace used for this sensor's outputs and is reused downstream by
+    calibrate / viirsprep so the whole pipeline shares a consistent
+    ROI-keyed path layout.
+    """
     extra = {"dmsp_preferred_sats": DMSP_PREFERRED_SATS} if sensor == SENSOR_DMSP else {}
     records = ingest(roi_bbox, start, end, sensor, INGEST_CACHE, **extra)
     log.info("%s: ingested %d orbits", sensor, len(records))
@@ -69,9 +75,11 @@ def _build_sensor_composites(
     prep = OrbitPrep(sensor, roi_bbox, PREP_DIR, lunar_mask_mode=lunar_mode)
     prepped = [prep.transform(r) for r in records]
 
-    composites = Compositor(sensor, COMPOSITE_DIR, period_format=period_format).aggregate(prepped)
+    composites = Compositor(
+        sensor, COMPOSITE_DIR, roi_slug=prep.roi_slug, period_format=period_format,
+    ).aggregate(prepped)
     log.info("%s: built %d composite period(s)", sensor, len(composites))
-    return composites
+    return composites, prep.roi_slug
 
 
 def main(
@@ -100,10 +108,11 @@ def main(
     print(f"=== {trialname}: {start.date()} → {end.date()}, train={train_year}, mode={lunar_mode!r} ===")
 
     # 1–3. Ingest, orbitprep, composite for both sensors.
-    composites_by_sensor = {}
+    composites_by_sensor: dict[str, list[dict]] = {}
+    slug_by_sensor: dict[str, str] = {}
     for sensor in (SENSOR_DMSP, SENSOR_VIIRS):
         t = time.time()
-        composites_by_sensor[sensor] = _build_sensor_composites(
+        composites_by_sensor[sensor], slug_by_sensor[sensor] = _build_sensor_composites(
             sensor, roi_bbox, start, end, lunar_mode, period_format,
         )
         print(f"  {sensor}: ingest+prep+composite in {time.time() - t:.1f}s")
@@ -112,9 +121,11 @@ def main(
     t = time.time()
     dmsp_calibrated = calibrate_dmsp_composites(
         composites_by_sensor[SENSOR_DMSP], CALIB_DIR, DMSP_PREFERRED_SATS,
+        roi_slug=slug_by_sensor[SENSOR_DMSP],
     )
     viirs_prepped = prep_viirs_composites(
         composites_by_sensor[SENSOR_VIIRS], VIIRS_PREP_DIR,
+        roi_slug=slug_by_sensor[SENSOR_VIIRS],
     )
     print(f"  calibrate + prep in {time.time() - t:.1f}s")
 
@@ -134,8 +145,8 @@ def main(
     # 6. Fit + apply.
     t = time.time()
     harmonizer = Harmonizer(
-        dmsp_period_dir=CALIB_DIR,
-        viirs_period_dir=VIIRS_PREP_DIR,
+        dmsp_period_dir=CALIB_DIR / slug_by_sensor[SENSOR_DMSP],
+        viirs_period_dir=VIIRS_PREP_DIR / slug_by_sensor[SENSOR_VIIRS],
         output_dir=trialout,
         train_periods=train_periods,
         downsampleVIIRS=DOWNSAMPLEVIIRS,
@@ -166,8 +177,8 @@ def main(
         run_diagnostics(
             trialout=trialout,
             trialresults=trialresults,
-            dmsp_calib_dir=CALIB_DIR,
-            viirs_prep_dir=VIIRS_PREP_DIR,
+            dmsp_calib_dir=CALIB_DIR / slug_by_sensor[SENSOR_DMSP],
+            viirs_prep_dir=VIIRS_PREP_DIR / slug_by_sensor[SENSOR_VIIRS],
             train_periods=train_periods,
             inference_periods=inference_periods,
         )

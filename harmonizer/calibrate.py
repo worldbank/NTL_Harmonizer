@@ -43,6 +43,7 @@ def calibrate_dmsp_composites(
     composites: Iterable[dict],
     dst_dir: Path,
     preferred_sats: dict[str, list[str]],
+    roi_slug: str,
 ) -> list[dict]:
     """Run DMSPstepwise on each per-period composite, picking coefs by sat-year.
 
@@ -50,8 +51,9 @@ def calibrate_dmsp_composites(
     the DMSP sensor. Each record has keys: sensor, period, n_orbits, radiance,
     li, obs_count.
 
-    Output records mirror the input but with `radiance` rebound to the
-    calibrated raster path under `dst_dir`.
+    Outputs land at ``{dst_dir}/{roi_slug}/{period}/radiance.tif``. The slug
+    must match the one used by the upstream ``OrbitPrep`` / ``Compositor``
+    so cross-ROI runs cannot overwrite each other.
     """
     dst_dir = Path(dst_dir)
     calibrator = DMSPstepwise(dstdir=dst_dir)  # dstdir kept for compatibility
@@ -69,7 +71,7 @@ def calibrate_dmsp_composites(
             )
             continue
         sat_year = f"{sat}{year}"
-        period_dir = dst_dir / period
+        period_dir = dst_dir / roi_slug / period
         period_dir.mkdir(parents=True, exist_ok=True)
         dst_path = period_dir / "radiance.tif"
         calibrator.transform(rec["radiance"], satellite_year=sat_year, dstpath=dst_path)
@@ -81,6 +83,7 @@ def calibrate_dmsp_composites(
 def prep_viirs_composites(
     composites: Iterable[dict],
     dst_dir: Path,
+    roi_slug: str,
     pixelradius: int = 5,
     sigma: float = 2.0,
     damperthresh: float = 1.0,
@@ -88,6 +91,9 @@ def prep_viirs_composites(
     chunks: str | None = "auto",
 ) -> list[dict]:
     """Run VIIRSprep on each per-period composite radiance raster.
+
+    Outputs land at ``{dst_dir}/{roi_slug}/{period}/radiance.tif``; the slug
+    must match the upstream ``OrbitPrep`` / ``Compositor``.
 
     Default damper / convolution / log-transform parameters match the legacy
     annual-composite pipeline. They may benefit from re-tuning at monthly
@@ -108,7 +114,7 @@ def prep_viirs_composites(
         if rec["sensor"] != SENSOR_VIIRS:
             raise ValueError(f"expected viirs_npp record, got {rec['sensor']!r}")
         period = rec["period"]
-        period_dir = dst_dir / period
+        period_dir = dst_dir / roi_slug / period
         period_dir.mkdir(parents=True, exist_ok=True)
         dst_path = period_dir / "radiance.tif"
         prepper.transform(rec["radiance"], dstpath=dst_path)

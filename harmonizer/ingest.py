@@ -370,16 +370,26 @@ _READ_BACKOFF_SECONDS = 2.0
 
 
 class WindowedCOGReader:
-    """Reads a small ROI window out of a remote COG and writes it locally."""
+    """Reads a small ROI window out of a remote COG and writes it locally.
 
-    def __init__(self, cache_dir: Path):
+    Cached outputs are keyed by sensor + roi-slug + period + orbit, so cache
+    paths from different ROIs never collide. Without the slug, a windowed
+    output written for ROI A would be silently re-used by ROI B and produce
+    a raster that only contains data over their intersection — a hard-to-spot
+    science bug downstream of compositing.
+    """
+
+    def __init__(self, cache_dir: Path, roi_bbox: Bbox):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.roi_bbox = tuple(roi_bbox)
+        from harmonizer.utils import roi_slug
+        self._roi_slug = roi_slug(self.roi_bbox)
 
     def cache_path(self, orbit: OrbitRef, layer: str) -> Path:
         """Layer is one of {'radiance', 'li', 'flag'}."""
         period = orbit.datetime.strftime("%Y%m")
-        sub = self.cache_dir / orbit.sensor / period
+        sub = self.cache_dir / orbit.sensor / self._roi_slug / period
         sub.mkdir(parents=True, exist_ok=True)
         return sub / f"{orbit.orbit_id}.{layer}.tif"
 
@@ -516,7 +526,7 @@ def ingest(
         end = end.replace(tzinfo=timezone.utc)
 
     client = STACCatalogClient(sensor, dmsp_preferred_sats=dmsp_preferred_sats)
-    reader = WindowedCOGReader(cache_dir)
+    reader = WindowedCOGReader(cache_dir, roi_bbox)
 
     skip = set(skip_layers)
     layers = [l for l in ("radiance", "li", "flag") if l not in skip]

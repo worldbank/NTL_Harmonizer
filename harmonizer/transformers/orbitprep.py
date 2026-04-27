@@ -182,6 +182,7 @@ class OrbitPrep:
     pixel_size_deg: Optional[float] = None
     _grid: TargetGrid = field(init=False)
     _cfg: SensorConfig = field(init=False)
+    roi_slug: str = field(init=False)
 
     def __post_init__(self):
         if self.sensor not in SENSOR_CONFIGS:
@@ -195,11 +196,17 @@ class OrbitPrep:
             self.pixel_size_deg = NATIVE_PIXEL_SIZE_DEG[self.sensor]
         self._grid = make_target_grid(self.roi_bbox, self.pixel_size_deg)
         self.dst_dir = Path(self.dst_dir)
+        # Snap-bounds + pixel size define the output grid identity. Hash them
+        # into the cache path so a smaller-ROI run can never poison a
+        # larger-ROI run's prep cache (different shapes → np.stack mismatch
+        # at composite time, or worse, silently truncated outputs).
+        from harmonizer.utils import roi_slug as _roi_slug
+        self.roi_slug = _roi_slug(self._grid.bounds, self.pixel_size_deg)
 
     # ---- orchestration --------------------------------------------------
 
     def out_dir(self, period: str) -> Path:
-        d = self.dst_dir / self.sensor / period
+        d = self.dst_dir / self.sensor / self.roi_slug / period
         d.mkdir(parents=True, exist_ok=True)
         return d
 
