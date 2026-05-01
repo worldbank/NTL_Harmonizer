@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from tqdm import tqdm
+
 import numpy as np
 import rasterio
 from rasterio.windows import Window
@@ -92,7 +94,7 @@ class Compositor:
             groups[period].append(rec)
 
         results: list[dict] = []
-        for period in sorted(groups):
+        for period in tqdm(sorted(groups), desc=f"{self.sensor} composite", unit="period"):
             results.append(self.composite_period(period, groups[period]))
         return results
 

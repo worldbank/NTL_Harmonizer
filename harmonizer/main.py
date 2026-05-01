@@ -21,6 +21,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tqdm import tqdm
+
 from harmonizer.calibrate import calibrate_dmsp_composites, prep_viirs_composites
 from harmonizer.composite import Compositor
 from harmonizer.config import (
@@ -165,7 +167,7 @@ def main(
     t = time.time()
     inference_periods = sorted(viirs_periods)
     n_emitted = 0
-    for period in inference_periods:
+    for period in tqdm(inference_periods, desc="harmonizer inference", unit="period"):
         out = harmonizer.transform(period)
         if out is not None:
             n_emitted += 1

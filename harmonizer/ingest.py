@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
+from tqdm import tqdm
+
 from harmonizer.constants import (
     S3_BUCKET,
     S3_HTTPS_BASE,
@@ -236,10 +238,9 @@ class STACCatalogClient:
         start_d = start.date()
         end_d = end.date()
         prefiltered: list[str] = []
-        for url in item_urls:
+        for url in tqdm(item_urls, desc=f"{self.sensor} URL prefilter", unit="url", leave=False):
             d = _date_from_item_url(url, self.sensor)
             if d is None:
-                # Couldn't parse — keep and let the JSON-level filter handle it
                 prefiltered.append(url)
             elif start_d <= d.date() <= end_d:
                 prefiltered.append(url)
@@ -263,10 +264,13 @@ class STACCatalogClient:
             return item
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            for fut in as_completed(pool.submit(_maybe_item, u) for u in item_urls):
-                item = fut.result()
-                if item is not None:
-                    yield item
+            futures = {pool.submit(_maybe_item, u): u for u in item_urls}
+            with tqdm(total=len(item_urls), desc=f"{self.sensor} fetch items", unit="item") as pbar:
+                for fut in as_completed(futures):
+                    item = fut.result()
+                    if item is not None:
+                        yield item
+                    pbar.update(1)
 
 
 # ---------------------------------------------------------------------------
@@ -540,18 +544,17 @@ def ingest(
         return _process_one_orbit(item, sensor, roi_bbox, reader, layers)
 
     out: list[dict] = []
-    progress_every = max(50, len(items) // 20)
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(_worker, item) for item in items]
-        for i, fut in enumerate(as_completed(futures)):
-            try:
-                record = fut.result()
-            except Exception as e:
-                log.warning("orbit worker raised: %s", e)
-                record = None
-            if record is not None:
-                out.append(record)
-            if (i + 1) % progress_every == 0:
-                log.info("%s: %d/%d orbits processed", sensor, i + 1, len(items))
+        with tqdm(total=len(items), desc=f"{sensor} orbits", unit="orbit") as pbar:
+            for fut in as_completed(futures):
+                try:
+                    record = fut.result()
+                except Exception as e:
+                    log.warning("orbit worker raised: %s", e)
+                    record = None
+                if record is not None:
+                    out.append(record)
+                pbar.update(1)
     log.info("%s: ingest complete (%d records)", sensor, len(out))
     return out

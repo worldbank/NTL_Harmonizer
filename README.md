@@ -81,9 +81,7 @@ pip install -e .
 
 GDAL must be installed system-wide for `rasterio` (and optionally `fiona`,
 used to read shapefiles). On macOS use `brew install gdal`. On Ubuntu use
-`apt install libgdal-dev`. Confirm with `gdalinfo --version`.
-
-Set `NLT` to the parent directory containing this repo (e.g. `export NLT=$HOME`).
+`apt install libgdal-dev gdal-bin`. Confirm with `gdalinfo --version`.
 
 ## Configuration
 
@@ -92,9 +90,9 @@ change:
 
 - `roipath` — path to a shapefile in `roifiles/`, **or** an
   `"xmin,ymin,xmax,ymax"` CSV in EPSG:4326 if you want to skip the shapefile.
-- `START_DATE` / `END_DATE` — defaults to 1992–2013, the canonical DMSP
-  era. Extend `END_DATE` and add later years to `DMSP_PREFERRED_SATS` if you
-  want to use the full DMSP-F18 archive (through 2017).
+- `START_DATE` / `END_DATE` — defaults to 1992–2020, spanning both platforms:
+  DMSP (1992–2013) and VIIRS (2012–present). Narrow `END_DATE` to 2013 if you
+  only want the DMSP era, or push it further for more VIIRS coverage.
 
 Other knobs (mostly leave alone):
 

@@ -10,12 +10,10 @@ imported them, see `harmonizer.downloader` for the deprecation note.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-# set to absolute location of this directory
-ROOT = Path(os.environ.get("NLT", str(Path(__file__).resolve().parent.parent.parent)), "NTL_Harmonizer")
+ROOT = Path(__file__).resolve().parent.parent
 
 #########################
 # ROI FILE
@@ -29,10 +27,9 @@ roipath = "roifiles/gadm36_FRA_shp/gadm36_FRA_0.shp"
 ###################################
 # DATE RANGE & PERIOD CADENCE
 ###################################
-# Default to a window where DMSP and VIIRS overlap richly enough to train.
-# Start where DMSP coverage begins; end where the legacy DMSP series ends.
+# Default spans both platforms: DMSP (1992–2013) + VIIRS (2012–present).
 START_DATE = datetime(1992, 1, 1, tzinfo=timezone.utc)
-END_DATE = datetime(2013, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+END_DATE = datetime(2020, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
 # strftime pattern for the period key. "%Y%m" = monthly (default),
 # "%Y" = annual, "%Y%m%d" = daily.

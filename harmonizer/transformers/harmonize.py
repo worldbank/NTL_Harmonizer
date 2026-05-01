@@ -39,6 +39,7 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import reproject
+from tqdm import tqdm
 
 from harmonizer.utils import clip_arr
 
@@ -213,7 +214,7 @@ class Harmonizer:
         Xs: list[np.ndarray] = []
         ys: list[np.ndarray] = []
         used: list[str] = []
-        for period in self.train_periods:
+        for period in tqdm(self.train_periods, desc="harmonizer train prep", unit="period"):
             try:
                 viirs_arr, dmsp_arr, _ = self._read_aligned_pair(period)
             except FileNotFoundError as e:

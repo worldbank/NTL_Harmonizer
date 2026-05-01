@@ -24,6 +24,8 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
+from tqdm import tqdm
+
 from harmonizer.constants import SENSOR_DMSP, SENSOR_VIIRS
 from harmonizer.transformers.dmspcalibrate import DMSPstepwise
 from harmonizer.transformers.viirsprep import VIIRSprep
@@ -57,8 +59,9 @@ def calibrate_dmsp_composites(
     """
     dst_dir = Path(dst_dir)
     calibrator = DMSPstepwise(dstdir=dst_dir)  # dstdir kept for compatibility
+    composites = list(composites)
     out: list[dict] = []
-    for rec in composites:
+    for rec in tqdm(composites, desc="DMSP calibrate", unit="period"):
         if rec["sensor"] != SENSOR_DMSP:
             raise ValueError(f"expected dmsp record, got {rec['sensor']!r}")
         period = rec["period"]
@@ -109,8 +112,9 @@ def prep_viirs_composites(
         chunks=chunks,
         dstdir=dst_dir,
     )
+    composites = list(composites)
     out: list[dict] = []
-    for rec in composites:
+    for rec in tqdm(composites, desc="VIIRS prep", unit="period"):
         if rec["sensor"] != SENSOR_VIIRS:
             raise ValueError(f"expected viirs_npp record, got {rec['sensor']!r}")
         period = rec["period"]
