@@ -16,3 +16,4 @@ xgboost
 imageio
 imageio-ffmpeg
 h5py
+boto3

@@ -17,6 +17,8 @@ import json
 import logging
 import os
 import re
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -48,9 +50,21 @@ S3_LIST_NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 # HTTP helpers (stdlib only)
 # ---------------------------------------------------------------------------
 
+_RETRY_STATUSES = {500, 502, 503, 504}
+_RETRY_DELAYS = (1, 4, 16)  # seconds; 3 retries with exponential backoff
+
 def _fetch_json(url: str, timeout: float = 30.0) -> dict:
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        return json.load(resp)
+    delays = iter(_RETRY_DELAYS)
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as e:
+            wait = next(delays, None)
+            if e.code not in _RETRY_STATUSES or wait is None:
+                raise
+            log.debug("HTTP %d fetching %s; retrying in %ds", e.code, url, wait)
+            time.sleep(wait)
 
 
 def _list_s3_keys(prefix: str, bucket: str = S3_BUCKET) -> list[str]:
