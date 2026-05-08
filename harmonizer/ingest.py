@@ -482,15 +482,88 @@ def _process_one_orbit(
     roi_bbox: Bbox,
     reader: "WindowedCOGReader",
     layers: list[str],
+    prefilter_lunar_mode: Optional[str] = None,
+    prefilter_lunar_min_frac: float = 0.0,
+    prefilter_lunar_thresh: float = 0.1,
 ) -> Optional[dict]:
     """Resolve the (radiance, li, flag) triplet for one STAC item and read each
     layer's ROI window into the local cache. Returns the record dict, or None
     if we can't even resolve the orbit (e.g. VIIRS LI lookup failed).
 
+    If prefilter_lunar_mode is "zero" or "low", a cheap lunar pre-screen is run
+    before the expensive VIIRS LI S3 prefix lookup and the larger radiance
+    download.  For "zero" mode the flag URL is derivable without any S3 listing,
+    so moonlit orbits cost only one small HTTP range read (~1 KB flag tile).
+    For "low" mode the LI tile is read first instead.  Orbits where fewer than
+    prefilter_lunar_min_frac of pixels pass the criterion are dropped early.
+
     Each layer fetch is wrapped: a single failed layer doesn't drop the orbit;
     the bad layer is just None in the returned record. Compositing later
     handles None gracefully.
     """
+    cfg = SENSOR_CONFIGS[sensor]
+
+    # ── Lunar pre-filter ─────────────────────────────────────────────────────
+    if prefilter_lunar_mode in ("zero", "low"):
+        import numpy as np
+        import rasterio
+        from harmonizer.transformers.orbitprep import decode_bit
+
+        rad_url = item["assets"]["image"]["href"]
+        orbit_id = (
+            _orbit_id_for_viirs(rad_url) if sensor == SENSOR_VIIRS
+            else _orbit_id_for_dmsp(rad_url)
+        )
+        dt = _parse_item_datetime(item)
+
+        if prefilter_lunar_mode == "zero":
+            # Flag URL derivable without S3 listing — avoids the per-orbit
+            # VIIRS LI prefix lookup for every rejected (moonlit) orbit.
+            check_url = cfg.flag_from_radiance(rad_url)
+            check_layer = "flag"
+        else:  # "low"
+            try:
+                check_url = (
+                    _viirs_li_url(rad_url) if sensor == SENSOR_VIIRS
+                    else cfg.li_from_radiance(rad_url)
+                )
+            except Exception as e:
+                log.warning("pre-filter LI lookup failed for %s: %s", orbit_id, e)
+                return None
+            check_layer = "li"
+
+        # Minimal stub so read_window can compute the right cache path.
+        # Only sensor/orbit_id/datetime affect cache_path(); URL fields unused.
+        stub = OrbitRef(
+            sensor=sensor, orbit_id=orbit_id, datetime=dt,
+            bbox=tuple(item["bbox"]),
+            radiance_url=rad_url,
+            li_url="",
+            flag_url=cfg.flag_from_radiance(rad_url),
+        )
+        check_dst = reader.cache_path(stub, check_layer)
+        try:
+            check_result = reader.read_window(check_url, roi_bbox, check_dst)
+        except Exception as e:
+            log.warning("pre-filter read failed for %s: %s", orbit_id, e)
+            return None
+
+        if check_result is None:
+            return None  # window doesn't overlap COG
+
+        with rasterio.open(check_result) as src:
+            arr = src.read(1)
+
+        if prefilter_lunar_mode == "zero":
+            passes = decode_bit(arr, cfg.zero_lunar_bit)
+        else:
+            passes = (arr.astype(np.float32) >= 0) & (arr.astype(np.float32) < prefilter_lunar_thresh)
+
+        if float(passes.mean()) <= prefilter_lunar_min_frac:
+            log.debug("pre-filter rejected %s (%.1f%% lunar-ok pixels)", orbit_id, 100 * passes.mean())
+            return None
+    # ── end pre-filter ────────────────────────────────────────────────────────
+
     try:
         orbit = orbitref_from_item(item, sensor)
     except Exception as e:
@@ -522,6 +595,9 @@ def ingest(
     skip_layers: Iterable[str] = (),
     dmsp_preferred_sats: Optional[dict[str, list[str]]] = None,
     max_workers: int = 32,
+    prefilter_lunar_mode: Optional[str] = None,
+    prefilter_lunar_min_frac: float = 0.0,
+    prefilter_lunar_thresh: float = 0.1,
 ) -> list[dict]:
     """Resolve and locally cache all orbit triplets matching ROI + date range.
 
@@ -530,6 +606,14 @@ def ingest(
     pool — every step is HTTP-bound, so threads parallelize cleanly. Cache
     hits in `WindowedCOGReader.read_window` short-circuit, so re-running over
     a wider date range is incremental.
+
+    prefilter_lunar_mode controls an optional early rejection of moonlit orbits
+    before the expensive radiance download.  Pass "zero" (recommended) to check
+    the sensor's zero-lunar-illuminance flag bit; pass "low" to threshold on the
+    LI layer directly.  Orbits where fewer than prefilter_lunar_min_frac of
+    pixels pass are dropped.  For "zero" mode the flag tile (~1 KB) is read
+    before any S3 LI prefix lookup or radiance download (~75 KB), so rejected
+    moonlit orbits cost almost nothing.
 
     Returns a list of dicts:
         {"orbit": OrbitRef, "radiance": Path, "li": Path, "flag": Path}
@@ -555,7 +639,12 @@ def ingest(
     log.info("%s: dispatching %d orbits across %d worker(s)", sensor, len(items), max_workers)
 
     def _worker(item):
-        return _process_one_orbit(item, sensor, roi_bbox, reader, layers)
+        return _process_one_orbit(
+            item, sensor, roi_bbox, reader, layers,
+            prefilter_lunar_mode=prefilter_lunar_mode,
+            prefilter_lunar_min_frac=prefilter_lunar_min_frac,
+            prefilter_lunar_thresh=prefilter_lunar_thresh,
+        )
 
     out: list[dict] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
