@@ -40,11 +40,13 @@ class VIIRSprep:
         X = self.logtransform(X)
         return X.compute() if self.usedask else X
 
-    def transform(self, srcpath):
+    def transform(self, srcpath, dstpath=None):
         with rasterio.open(srcpath) as src:
             X = src.read(1)
             profile = src.profile
         X = self.process(X)
-        dstpath = Path(self.dstdir, srcpath.name)
+        if dstpath is None:
+            dstpath = Path(self.dstdir, srcpath.name)
         with rasterio.open(dstpath, "w", **profile) as dst:
             dst.write(X, 1)
+        return dstpath

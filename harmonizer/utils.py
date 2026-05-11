@@ -1,8 +1,49 @@
+import hashlib
 import requests, zipfile, io, re, os, rasterio, gzip, shutil, urllib.request, concurrent.futures
 from pathlib import Path
+from typing import Optional
 import numpy as np
 from tqdm import tqdm
 from functools import partial
+
+
+def roi_slug(
+    roi_bbox: tuple[float, float, float, float],
+    pixel_size_deg: Optional[float] = None,
+) -> str:
+    """Stable short slug identifying a (ROI, pixel-size) cache namespace.
+
+    All cache layers (ingest, orbitprep, composite, calibrate, viirsprep) embed
+    this in their on-disk paths so that runs with different ROIs or grid
+    resolutions cannot silently collide. The slug is a 10-char hex truncation
+    of a SHA-1 over the bbox (and optional pixel size), prefixed with `roi-`.
+    """
+    parts = [f"{x:.6f}" for x in roi_bbox]
+    if pixel_size_deg is not None:
+        parts.append(f"px{pixel_size_deg:.6f}")
+    digest = hashlib.sha1("|".join(parts).encode()).hexdigest()[:10]
+    return f"roi-{digest}"
+
+
+def roi_bbox_from_path(path) -> tuple[float, float, float, float]:
+    """Read an ROI's bounding box in EPSG:4326.
+
+    Accepts either a shapefile path (string or Path) or an "xmin,ymin,xmax,ymax"
+    CSV string. Returns a 4-tuple of floats. Tries fiona first (smaller dep),
+    falls back to geopandas.
+    """
+    s = str(path)
+    if s.count(",") == 3 and not Path(s).exists():
+        parts = [float(v.strip()) for v in s.split(",")]
+        return tuple(parts)  # type: ignore[return-value]
+    try:
+        import fiona  # type: ignore
+        with fiona.open(s) as src:
+            return tuple(src.bounds)  # type: ignore[return-value]
+    except ImportError:
+        pass
+    import geopandas as gpd  # type: ignore
+    return tuple(gpd.read_file(s).total_bounds)  # type: ignore[return-value]
 
 #################
 # RASTER OPS

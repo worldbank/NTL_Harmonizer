@@ -278,3 +278,144 @@ def main(outputdir, resultsdir, dmsp_clip, viirs_clip, viirs_tmp, lowerthresh, s
         selectDMSP=selectDMSP,
         fps=3,
     )
+
+
+# ---------------------------------------------------------------------------
+# New per-period diagnostics for the WB-LEN pipeline
+# ---------------------------------------------------------------------------
+
+def _per_period_path(root, period, name="radiance.tif"):
+    return Path(root, period, name)
+
+
+def _read_arr(path):
+    with rasterio.open(path) as src:
+        return src.read(1).astype(np.float32)
+
+
+def training_period_diagnostics(
+    train_periods, dmsp_calib_dir, harmonized_dir, resultsdir, thresh=1,
+):
+    """For each training period, scatter + histogram of harmonized VIIRS vs calibrated DMSP.
+
+    Mirrors the legacy 2013 plots, but produces one set per training period
+    (typically 12 per ROI when training on a full year of monthly composites).
+    """
+    summary = []
+    for period in train_periods:
+        dpath = _per_period_path(dmsp_calib_dir, period)
+        hpath = _per_period_path(harmonized_dir, period)
+        if not (dpath.exists() and hpath.exists()):
+            continue
+        darr = _read_arr(dpath)
+        harr = _read_arr(hpath)
+
+        valid = np.isfinite(darr) & np.isfinite(harr)
+        arr = transform_array(harr[valid], darr[valid], thresh)
+        if arr.shape[1] == 0:
+            continue
+        x = arr[0, :]
+        y = arr[1, :]
+
+        rmsd = calc_rmsd(x, y)
+        r2, p = calc_r2(x, y)
+        summary.append((period, rmsd, r2, p))
+
+        raster_scatter(
+            x=x, y=y,
+            xlabel="VIIRS-DNB (harmonized DN)",
+            ylabel="DMSP-OLS (DN)",
+            title=f"{period}: harmonized VIIRS vs DMSP",
+            opath=Path(resultsdir, f"{period}_scatter.png"),
+            alpha=0.01,
+        )
+        raster_hist(
+            x=x, y=y,
+            bins=63,
+            label1="VIIRS-DNB (harmonized)",
+            label2="DMSP-OLS",
+            xlabel="Per pixel radiance (DN)",
+            ylabel="Frequency",
+            title=f"{period}: harmonized VIIRS vs DMSP distribution",
+            opath=Path(resultsdir, f"{period}_hist.png"),
+        )
+
+    if summary:
+        with open(Path(resultsdir, "training_metrics.txt"), "w") as f:
+            f.write("period\tRMSD\tSpearmanR\tp\n")
+            for period, rmsd, r2, p in summary:
+                f.write(f"{period}\t{rmsd:.4f}\t{r2:.4f}\t{p}\n")
+
+
+def _period_to_decimal_year(period):
+    """201501 → 2015.0; 2015 → 2015.0; 20150115 → ~2015.04."""
+    s = period
+    if len(s) == 4:
+        return float(s)
+    if len(s) == 6:
+        return int(s[:4]) + (int(s[4:6]) - 1) / 12.0
+    if len(s) == 8:
+        # day-of-year approximation
+        from datetime import datetime as _dt
+        d = _dt.strptime(s, "%Y%m%d")
+        return d.year + (d.timetuple().tm_yday - 1) / 366.0
+    return float(s[:4])
+
+
+def per_period_timeseries(
+    inference_periods, dmsp_calib_dir, harmonized_dir, resultsdir, thresh=1,
+):
+    """Mean / median / SoL across all inference periods, DMSP vs harmonized VIIRS."""
+    dmsp_periods = sorted(p for p in inference_periods if _per_period_path(dmsp_calib_dir, p).exists())
+    viirs_periods = sorted(p for p in inference_periods if _per_period_path(harmonized_dir, p).exists())
+
+    def _series(periods, root, reducer):
+        out = []
+        for p in periods:
+            arr = _read_arr(_per_period_path(root, p))
+            if thresh is not None:
+                arr = arr.copy()
+                arr[arr < thresh] = np.nan
+            out.append(float(reducer(arr)))
+        return out
+
+    dmsp_yrs = [_period_to_decimal_year(p) for p in dmsp_periods]
+    viirs_yrs = [_period_to_decimal_year(p) for p in viirs_periods]
+
+    for stat_name, reducer in (("mean", np.nanmean), ("median", np.nanmedian), ("sum", np.nansum)):
+        dmsp = _series(dmsp_periods, dmsp_calib_dir, reducer)
+        viirs = _series(viirs_periods, harmonized_dir, reducer)
+        plot_timeseries(
+            seqs=[dmsp, viirs],
+            yrs=[dmsp_yrs, viirs_yrs],
+            labels=["DMSP-OLS (intercalibrated)", "VIIRS-OLS (harmonized)"],
+            opath=Path(resultsdir, f"harmonized_ts_{stat_name}.png"),
+            xlabel="Period",
+            ylabel=f"{stat_name} radiance per pixel (DN)",
+            title=f"Harmonized time series for ROI ({stat_name})",
+        )
+
+
+def run_diagnostics(
+    trialout, trialresults, dmsp_calib_dir, viirs_prep_dir,
+    train_periods, inference_periods, thresh=1,
+):
+    """Top-level entry point for the new pipeline.
+
+    `trialout` is the harmonized-VIIRS output dir.
+    `dmsp_calib_dir` and `viirs_prep_dir` are the post-step-4 dirs.
+    """
+    training_period_diagnostics(
+        train_periods=train_periods,
+        dmsp_calib_dir=dmsp_calib_dir,
+        harmonized_dir=trialout,
+        resultsdir=trialresults,
+        thresh=thresh,
+    )
+    per_period_timeseries(
+        inference_periods=inference_periods,
+        dmsp_calib_dir=dmsp_calib_dir,
+        harmonized_dir=trialout,
+        resultsdir=trialresults,
+        thresh=thresh,
+    )

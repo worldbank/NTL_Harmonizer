@@ -1,63 +1,37 @@
-from harmonizer.utils import batch_download
-from harmonizer.config import DMSP_URLS, DMSP_IN, VIIRS_IN
-import argparse, gzip, shutil, os
-from tqdm import tqdm
-from pathlib import Path
+"""Deprecated. Kept as a shim so old imports don't crash.
+
+The legacy pipeline downloaded ~115 GB of full-globe annual composites from
+NOAA NGDC (DMSP-OLS) and EOG (VIIRS-DNB), then cropped them locally. The new
+pipeline reads the WB-LEN STAC archive on S3 (`s3://globalnightlight/`) with
+windowed COG access — no bulk download, no manual extraction.
+
+Use `harmonizer.ingest.ingest(...)` and the rest of the pipeline (`OrbitPrep`,
+`Compositor`, `calibrate_*`, `Harmonizer`) instead. See `harmonizer/main.py`
+for the full wiring.
+"""
+import warnings
 
 
-def read_urls(srcpath):
-    with open(srcpath, "r") as f:
-        return f.read().split("\n")
-
-
-def batch_download_DMSP(dmspurls=DMSP_URLS, dmspdir=DMSP_IN, n_jobs=16):
-    dmspurls = read_urls(dmspurls)
-    print("downloading DMSP-OLS composites...")
-    batch_download(dmspurls, dmspdir, n_jobs)
-
-
-def unzipDMSP(srcdir=DMSP_IN, pattern="**/*stable_lights.avg_vis.tif.gz"):
-    # TODO: pool process
-    srcpaths = srcdir.glob(pattern)
-    for srcpath in tqdm(srcpaths):
-        with gzip.open(srcpath, "rb") as f_in:
-            with open(Path(srcpath.parent.parent, srcpath.stem), "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-    dpaths = srcdir.glob("*.v4")
-    for dpath in dpaths:
-        os.system(f"rm -rf {dpath}")
-
-
-def unzipVIIRS(srcdir=VIIRS_IN, pattern="*.gz"):
-    # TODO: pool process
-    srcpaths = srcdir.glob(pattern)
-    for srcpath in tqdm(srcpaths):
-        with gzip.open(srcpath, "rb") as f_in:
-            with open(Path(srcpath.parent, srcpath.stem), "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        os.system(f"rm {srcpath}")
-
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-dmsp", "--dmsp", action="store_true", help="download DMSP files"
+def _deprecated(name: str) -> None:
+    warnings.warn(
+        f"{name} has been removed. The new pipeline reads from "
+        "s3://globalnightlight/ via harmonizer.ingest. "
+        "See harmonizer/main.py for the new flow.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    parser.add_argument(
-        "-dmspunzip", "--dmspunzip", action="store_true", help="unzip DMSP files"
-    )
-    parser.add_argument(
-        "-vunzip", "--vunzip", action="store_true", help="unzip VIIRS files"
-    )
-    args = parser.parse_args()
-    return args.dmsp, args.dmspunzip, args.vunzip
 
 
-if __name__ == "__main__":
-    dmsp, dmspunzip, vunzip = get_args()
-    if dmsp:
-        batch_download_DMSP()
-    if dmspunzip:
-        unzipDMSP()
-    if vunzip:
-        unzipVIIRS()
+def batch_download_DMSP(*args, **kwargs):
+    _deprecated("batch_download_DMSP")
+    raise RuntimeError("batch_download_DMSP is removed; use harmonizer.ingest instead")
+
+
+def unzipDMSP(*args, **kwargs):
+    _deprecated("unzipDMSP")
+    raise RuntimeError("unzipDMSP is removed; the new pipeline reads COGs directly")
+
+
+def unzipVIIRS(*args, **kwargs):
+    _deprecated("unzipVIIRS")
+    raise RuntimeError("unzipVIIRS is removed; the new pipeline reads COGs directly")
